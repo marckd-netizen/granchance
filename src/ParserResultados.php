@@ -16,7 +16,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
  */
 final class ParserResultados
 {
-    private const COL_PUESTO = 0, COL_CABALLO = 1, COL_GATERA = 2, COL_PESO_CABALLO = 3, COL_HERRAJE = 5,
+    private const COL_PUESTO = 0, COL_CABALLO = 1, COL_GATERA = 2, COL_PESO_CABALLO = 3, COL_RETIRO = 4, COL_TRATAMIENTO = 5,
         COL_MARCA_JO = 7, COL_JOCKEY = 8, COL_PESO_ASIG = 9, COL_PESO_REAL = 10, COL_DIST_ANT = 11,
         COL_DIST_ACUM = 12, COL_SPORT = 13, COL_PEDIGRI = 14, COL_CUIDADOR = 16, COL_TIEMPO = 17,
         COL_STUD = 19, COL_CRIADOR = 21;
@@ -101,7 +101,7 @@ final class ParserResultados
             'numero' => $numero, 'id' => $id, 'premio' => trim(rtrim(trim($premio), '- ')),
             'distancia' => null, 'hora' => null, 'pista' => null, 'viento' => null,
             'condicion' => null, 'bolsa' => null, 'bolsa_detalle' => null,
-            'tiempo_ganador' => null, 'parciales' => null, 'retirados' => null, 'comentario' => null,
+            'tiempo_ganador' => null, 'tiempo_ganador_seg' => null, 'parciales' => null, 'retirados' => null, 'comentario' => null,
             'apuestas' => [], 'actuaciones' => [],
         ];
         // "1100 Mts., 16/10/2026 14:00 Pista seca. Viento En contra"
@@ -135,10 +135,11 @@ final class ParserResultados
         $a = [
             'puesto' => preg_match('/^(\d+)º$/u', $puestoTxt, $m) ? (int)$m[1] : null,
             'puesto_texto' => $puestoTxt,
-            'nombre' => null, 'pelaje' => null, 'sexo' => null, 'anio_nac' => null,
+            'nombre' => null, 'pais' => null, 'pelaje' => null, 'sexo' => null, 'anio_nac' => null,
             'gatera' => preg_match('/(\d+)/', self::txt($f[self::COL_GATERA] ?? null), $m) ? (int)$m[1] : null,
             'peso_caballo' => self::entero($f[self::COL_PESO_CABALLO] ?? null) ?: null,
-            'herraje' => self::nulo($f[self::COL_HERRAJE] ?? null),
+            'retiro_motivo' => self::nulo($f[self::COL_RETIRO] ?? null),   // si lo retiraron de la carrera, y por qué
+            'tratamiento' => self::nulo($f[self::COL_TRATAMIENTO] ?? null),  // tratamiento veterinario declarado
             'jockey' => self::nulo($f[self::COL_JOCKEY] ?? null),
             'peso_asignado' => self::num($f[self::COL_PESO_ASIG] ?? null),
             'peso_real' => self::num($f[self::COL_PESO_REAL] ?? null),
@@ -149,6 +150,7 @@ final class ParserResultados
             'padre' => null, 'madre' => null, 'abuelo_materno' => null,
             'cuidador' => self::nulo($f[self::COL_CUIDADOR] ?? null),
             'tiempo' => self::nulo($f[self::COL_TIEMPO] ?? null),
+            'tiempo_seg' => null,
             'stud' => self::nulo($f[self::COL_STUD] ?? null),
             'criador' => self::nulo($f[self::COL_CRIADOR] ?? null),
             'antidoping' => false,
@@ -164,6 +166,11 @@ final class ParserResultados
         } else {
             $a['nombre'] = $cab;
         }
+        // Nacionalidad entre paréntesis cuando no es uruguayo: "TORDO CARO (BRZ)"
+        if (preg_match('/\s*\(([A-Z]{2,4})\)$/u', $a['nombre'], $m)) {
+            $a['pais'] = $m[1];
+        }
+        $a['tiempo_seg'] = self::segundos($a['tiempo']);
         // "Saratoga Storm y Mal Querida por Southern Lawyer" ("e" delante de i/hi)
         $ped = self::txt($f[self::COL_PEDIGRI] ?? null);
         if (preg_match('/^(.+?)\s+(?:y|e)\s+(.+)\s+por\s+(.+)$/u', $ped, $m)) {
@@ -179,6 +186,7 @@ final class ParserResultados
             $linea = trim($linea);
             if (preg_match('/^Tiempo:\s*(.*?)\s*\/\s*Parciales:\s*(.*)$/u', $linea, $m)) {
                 $car['tiempo_ganador'] = $m[1] ?: null;
+                $car['tiempo_ganador_seg'] = self::segundos($car['tiempo_ganador']);
                 $car['parciales'] = $m[2] ?: null;
             } elseif (str_starts_with($linea, 'Retirados:')) {
                 $partes = array_map('trim', explode(' / ', $linea));
@@ -208,6 +216,15 @@ final class ParserResultados
             $ap['pozo'] = self::num($r[1]);
         }
         return $ap;
+    }
+
+    /** "1'06''68" (minutos'segundos''centésimas) -> 66.68 */
+    public static function segundos(?string $t): ?float
+    {
+        if ($t === null || !preg_match("/^(\d+)'(\d{1,2})''(\d{1,2})$/", $t, $m)) {
+            return null;
+        }
+        return round((int)$m[1] * 60 + (int)$m[2] + (int)str_pad($m[3], 2, '0') / 100, 2);
     }
 
     private static function txt(mixed $v): string

@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS carrera (
   condicion       TEXT NULL,
   bolsa           DECIMAL(12,2) NULL,
   bolsa_detalle   VARCHAR(255) NULL,
-  tiempo_ganador  VARCHAR(12) NULL,
+  tiempo_ganador  VARCHAR(12) NULL,               -- m'ss''cc tal cual
+  tiempo_ganador_seg DECIMAL(7,2) NULL,           -- el mismo tiempo en segundos
   parciales       VARCHAR(150) NULL,
   retirados       VARCHAR(255) NULL,
   comentario      TEXT NULL,
@@ -54,7 +55,8 @@ CREATE TABLE IF NOT EXISTS caballo (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   nombre          VARCHAR(60) NOT NULL,
   anio_nac        SMALLINT UNSIGNED NOT NULL,
-  pelaje          VARCHAR(4) NULL,
+  pais            VARCHAR(4) NULL,                -- ARG, BRZ...; NULL = uruguayo
+  pelaje          VARCHAR(4) NULL,                -- z zaino, a alazán, t tordillo...
   sexo            CHAR(1) NULL,                   -- m macho, h hembra
   padre           VARCHAR(60) NULL,
   madre           VARCHAR(60) NULL,
@@ -77,7 +79,8 @@ CREATE TABLE IF NOT EXISTS actuacion (
   puesto_texto    VARCHAR(10) NULL,               -- tal cual figura ("1º", "Dist.", ...)
   gatera          TINYINT UNSIGNED NULL,
   peso_caballo    SMALLINT UNSIGNED NULL,         -- kg; el Excel trae 0 cuando no hay dato
-  herraje         VARCHAR(4) NULL,
+  retiro_motivo   VARCHAR(120) NULL,              -- columna E: retirado y motivo
+  tratamiento     VARCHAR(20) NULL,               -- columna F: tratamiento veterinario (FF, FB, FS...)
   jockey_id       INT UNSIGNED NULL,
   cuidador_id     INT UNSIGNED NULL,
   stud_id         INT UNSIGNED NULL,
@@ -88,7 +91,8 @@ CREATE TABLE IF NOT EXISTS actuacion (
   sport           DECIMAL(8,2) NULL,              -- dividendo a ganador que figura en la fila
   div_segundo     DECIMAL(8,2) NULL,              -- de la grilla de dividendos (1º-3º)
   div_tercero     DECIMAL(8,2) NULL,
-  tiempo          VARCHAR(12) NULL,
+  tiempo          VARCHAR(12) NULL,               -- m'ss''cc tal cual
+  tiempo_seg      DECIMAL(7,2) NULL,
   antidoping      TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (carrera_id, caballo_id),
   KEY (caballo_id), KEY (jockey_id), KEY (cuidador_id), KEY (stud_id),
