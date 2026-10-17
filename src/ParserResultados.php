@@ -16,7 +16,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
  */
 final class ParserResultados
 {
-    private const COL_PUESTO = 0, COL_CABALLO = 1, COL_GATERA = 2, COL_PESO_CABALLO = 3, COL_RETIRO = 4, COL_TRATAMIENTO = 5,
+    private const COL_PUESTO = 0, COL_CABALLO = 1, COL_GATERA = 2, COL_PESO_CABALLO = 3, COL_RETIRO = 4, COL_TRATAMIENTO = 5, COL_MARCA = 6,
         COL_MARCA_JO = 7, COL_JOCKEY = 8, COL_PESO_ASIG = 9, COL_PESO_REAL = 10, COL_DIST_ANT = 11,
         COL_DIST_ACUM = 12, COL_SPORT = 13, COL_PEDIGRI = 14, COL_CUIDADOR = 16, COL_TIEMPO = 17,
         COL_STUD = 19, COL_CRIADOR = 21;
@@ -133,13 +133,15 @@ final class ParserResultados
     {
         $puestoTxt = self::txt($f[self::COL_PUESTO] ?? null);
         $a = [
-            'puesto' => preg_match('/^(\d+)º$/u', $puestoTxt, $m) ? (int)$m[1] : null,
+            // "0º" = no corrió (retirado): queda en puesto_texto, sin puesto numérico.
+            'puesto' => preg_match('/^(\d+)º$/u', $puestoTxt, $m) && $m[1] !== '0' ? (int)$m[1] : null,
             'puesto_texto' => $puestoTxt,
             'nombre' => null, 'pais' => null, 'pelaje' => null, 'sexo' => null, 'anio_nac' => null,
             'gatera' => preg_match('/(\d+)/', self::txt($f[self::COL_GATERA] ?? null), $m) ? (int)$m[1] : null,
             'peso_caballo' => self::entero($f[self::COL_PESO_CABALLO] ?? null) ?: null,
             'retiro_motivo' => self::nulo($f[self::COL_RETIRO] ?? null),   // si lo retiraron de la carrera, y por qué
             'tratamiento' => self::nulo($f[self::COL_TRATAMIENTO] ?? null),  // tratamiento veterinario declarado
+            'marca' => self::nulo($f[self::COL_MARCA] ?? null),   // columna G: c, m, cm en reuniones viejas (significado sin confirmar)
             'jockey' => self::nulo($f[self::COL_JOCKEY] ?? null),
             'peso_asignado' => self::num($f[self::COL_PESO_ASIG] ?? null),
             'peso_real' => self::num($f[self::COL_PESO_REAL] ?? null),
@@ -167,8 +169,15 @@ final class ParserResultados
             $a['nombre'] = $cab;
         }
         // Nacionalidad entre paréntesis cuando no es uruguayo: "TORDO CARO (BRZ)"
+        // (se saca del nombre: la identidad del caballo es nombre + país + año).
+        $a['pais'] = 'URU';
         if (preg_match('/\s*\(([A-Z]{2,4})\)$/u', $a['nombre'], $m)) {
             $a['pais'] = $m[1];
+            $a['nombre'] = substr($a['nombre'], 0, -strlen($m[0]));
+        }
+        if ($a['puesto'] === null) {
+            // Retirado: el Excel rellena tiempo 0'00''00, peso real 0 y dividendo 0.
+            [$a['tiempo'], $a['peso_real'], $a['sport']] = [null, $a['peso_real'] ?: null, $a['sport'] ?: null];
         }
         $a['tiempo_seg'] = self::segundos($a['tiempo']);
         // "Saratoga Storm y Mal Querida por Southern Lawyer" ("e" delante de i/hi)
@@ -224,7 +233,8 @@ final class ParserResultados
         if ($t === null || !preg_match("/^(\d+)'(\d{1,2})''(\d{1,2})$/", $t, $m)) {
             return null;
         }
-        return round((int)$m[1] * 60 + (int)$m[2] + (int)str_pad($m[3], 2, '0') / 100, 2);
+        $seg = round((int)$m[1] * 60 + (int)$m[2] + (int)str_pad($m[3], 2, '0') / 100, 2);
+        return $seg > 0 ? $seg : null;   // 0'00''00 = sin tiempo registrado
     }
 
     private static function txt(mixed $v): string

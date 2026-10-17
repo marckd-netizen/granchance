@@ -30,8 +30,9 @@ CREATE TABLE IF NOT EXISTS reunion (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS carrera (
-  id              INT UNSIGNED PRIMARY KEY,       -- "Nro." oficial de la carrera (ej. 32612)
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   reunion_id      INT UNSIGNED NOT NULL,
+  nro_oficial     INT UNSIGNED NULL,              -- "Nro." del Excel (ej. 32612); se repite entre hipódromos, no sirve de clave
   numero          TINYINT UNSIGNED NOT NULL,      -- 1ª, 2ª...
   premio          VARCHAR(150) NULL,
   distancia       SMALLINT UNSIGNED NULL,         -- metros
@@ -46,23 +47,23 @@ CREATE TABLE IF NOT EXISTS carrera (
   parciales       VARCHAR(150) NULL,
   retirados       VARCHAR(255) NULL,
   comentario      TEXT NULL,
-  KEY (reunion_id),
+  UNIQUE KEY (reunion_id, numero),
   FOREIGN KEY (reunion_id) REFERENCES reunion(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- El Excel no trae un id de caballo: se identifica por nombre + año de nacimiento.
+-- El Excel no trae un id de caballo: es el mismo caballo si coinciden nombre, país y año de nacimiento.
 CREATE TABLE IF NOT EXISTS caballo (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   nombre          VARCHAR(60) NOT NULL,
   anio_nac        SMALLINT UNSIGNED NOT NULL,
-  pais            VARCHAR(4) NULL,                -- ARG, BRZ...; NULL = uruguayo
+  pais            VARCHAR(4) NOT NULL DEFAULT 'URU', -- ARG, BRZ...; URU cuando el Excel no indica país
   pelaje          VARCHAR(4) NULL,                -- z zaino, a alazán, t tordillo...
   sexo            CHAR(1) NULL,                   -- m macho, h hembra
   padre           VARCHAR(60) NULL,
   madre           VARCHAR(60) NULL,
   abuelo_materno  VARCHAR(60) NULL,
   criador_id      INT UNSIGNED NULL,
-  UNIQUE KEY (nombre, anio_nac)
+  UNIQUE KEY (nombre, pais, anio_nac)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS persona (
@@ -81,6 +82,7 @@ CREATE TABLE IF NOT EXISTS actuacion (
   peso_caballo    SMALLINT UNSIGNED NULL,         -- kg; el Excel trae 0 cuando no hay dato
   retiro_motivo   VARCHAR(120) NULL,              -- columna E: retirado y motivo
   tratamiento     VARCHAR(20) NULL,               -- columna F: tratamiento veterinario (FF, FB, FS...)
+  marca           VARCHAR(10) NULL,               -- columna G: c, m, cm en reuniones viejas (sin confirmar qué es)
   jockey_id       INT UNSIGNED NULL,
   cuidador_id     INT UNSIGNED NULL,
   stud_id         INT UNSIGNED NULL,

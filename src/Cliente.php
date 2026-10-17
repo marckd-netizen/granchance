@@ -33,7 +33,13 @@ final class Cliente
         $detalle = null;
         for ($intento = 1; $intento <= $this->reintentos; $intento++) {
             $this->esperarTurno();
-            [$codigo, $cuerpo, $error] = $this->get($url);
+            [$codigo, $cuerpo, $error, $destino] = $this->get($url);
+            // Sin carreras ese día (o hipódromo inexistente), el servicio redirige a
+            // hipica.maronas.com.uy/RacingInfo/Errors?errorCode=ED0003 en vez de devolver vacío.
+            if ($error === null && $codigo >= 300 && $codigo < 400) {
+                parse_str((string)parse_url((string)$destino, PHP_URL_QUERY), $q);
+                return ['estado' => 'vacio', 'archivo' => null, 'bytes' => 0, 'detalle' => $q['errorCode'] ?? "HTTP $codigo"];
+            }
             if ($error === null && $codigo === 200) {
                 // El servicio responde vacío cuando ese día no hubo carreras en ese hipódromo.
                 if (!self::esExcel($cuerpo)) {
@@ -66,13 +72,13 @@ final class Cliente
         $this->ultimoPedido = microtime(true);
     }
 
-    /** @return array{0:int,1:string,2:?string} */
+    /** @return array{0:int,1:string,2:?string,3:?string} */
     private function get(string $url): array
     {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_CONNECTTIMEOUT => 20,
             CURLOPT_TIMEOUT => 90,
             CURLOPT_USERAGENT => 'GranChance/1.0 (estadisticas hipicas)',
@@ -80,6 +86,7 @@ final class Cliente
         $cuerpo = curl_exec($ch);
         $error = $cuerpo === false ? curl_error($ch) : null;
         $codigo = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        return [$codigo, $cuerpo === false ? '' : (string)$cuerpo, $error];
+        $destino = curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: null;
+        return [$codigo, $cuerpo === false ? '' : (string)$cuerpo, $error, $destino];
     }
 }
