@@ -114,8 +114,14 @@ final class ParserResultados
         if (preg_match('/^(\d+)\s*Mts\./u', $c1, $m)) {
             $car['distancia'] = (int)$m[1];
         }
-        if (preg_match('#(\d{2})/(\d{2})/(\d{4})\s+(\d{1,2}):(\d{2})#', $c1, $m)) {
-            $car['hora'] = sprintf('%s-%s-%s %02d:%s:00', $m[3], $m[2], $m[1], $m[4], $m[5]);
+        // "16/10/2026 14:00", o en formato inglés (2016): "6/3/2016 5:40 PM" = 3 de junio, 17:40
+        if (preg_match('#(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})(?:\s*([AP])M)?#i', $c1, $m)) {
+            [$dia, $mes, $hora] = [(int)$m[1], (int)$m[2], (int)$m[4]];
+            if (!empty($m[6])) {
+                [$dia, $mes] = [$mes, $dia];
+                $hora = $hora % 12 + (strtoupper($m[6]) === 'P' ? 12 : 0);
+            }
+            $car['hora'] = sprintf('%s-%02d-%02d %02d:%s:00', $m[3], $mes, $dia, $hora, $m[5]);
         }
         if (preg_match('/Pista\s+([^.]+)\./u', $c1, $m)) {
             $car['pista'] = trim($m[1]);
