@@ -48,7 +48,13 @@ final class ParserResultados
             }
             if (preg_match('/^(\d+)ª Carrera, Nro\.\s*(\d+), Premio:\s*(.*)$/us', $c0, $m)) {
                 unset($carrera);
-                $res['carreras'][] = $this->cabecera((int)$m[1], (int)$m[2], $m[3], self::txt($f[1] ?? null), $c2);
+                [$premio, $c1] = [$m[3], self::txt($f[1] ?? null)];
+                // Algunas reuniones (p. ej. dic. 2017) traen premio, distancia y condición juntos en la columna A.
+                if ($c1 === '' && $c2 === '' && str_contains($premio, "\n")) {
+                    $lineas = preg_split('/\R/u', $premio, 3);
+                    [$premio, $c1, $c2] = [$lineas[0], trim($lineas[1] ?? ''), trim($lineas[2] ?? '')];
+                }
+                $res['carreras'][] = $this->cabecera((int)$m[1], (int)$m[2], $premio, $c1, $c2);
                 $carrera = &$res['carreras'][array_key_last($res['carreras'])];
                 $grilla = 0;
                 continue;
@@ -264,10 +270,16 @@ final class ParserResultados
         if ($t === '' || $t === '-') {
             return null;
         }
-        if (str_contains($t, ',')) {
-            $t = str_replace(['.', ','], ['', '.'], $t);
-        } elseif (preg_match('/^\d{1,3}(\.\d{3})+$/', $t)) {
-            $t = str_replace('.', '', $t);
+        // Hay reuniones con formato uruguayo (97.650,00) y otras con formato inglés (254,538.00):
+        // si aparecen los dos separadores, el último es el decimal; uno solo en grupos de 3 es de miles.
+        $coma = strrpos($t, ',');
+        $punto = strrpos($t, '.');
+        if ($coma !== false && $punto !== false) {
+            $t = $coma > $punto ? str_replace(['.', ','], ['', '.'], $t) : str_replace(',', '', $t);
+        } elseif (preg_match('/^-?\d{1,3}([.,]\d{3})+$/', $t)) {
+            $t = str_replace(['.', ','], '', $t);
+        } else {
+            $t = str_replace(',', '.', $t);
         }
         return is_numeric($t) ? (float)$t : null;
     }

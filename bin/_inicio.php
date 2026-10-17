@@ -45,7 +45,18 @@ function procesarDia(Cliente $cli, ParserResultados $parser, Repositorio $repo, 
     if ($d['estado'] === 'ok') {
         try {
             $r = $parser->parsearArchivo($d['archivo']);
-            $n = $repo->guardarReunion($hip, $fecha, $r, $d['archivo']);
+            // Con dos cargas en paralelo, MySQL puede abortar una transacción por deadlock: se reintenta.
+            for ($intento = 1; ; $intento++) {
+                try {
+                    $n = $repo->guardarReunion($hip, $fecha, $r, $d['archivo']);
+                    break;
+                } catch (\PDOException $e) {
+                    if ($intento >= 3 || !in_array($e->errorInfo[1] ?? null, [1213, 1205], true)) {
+                        throw $e;
+                    }
+                    usleep(500000 * $intento);
+                }
+            }
             $d['detalle'] = "$n carreras";
             registro("$fecha hip $hip: {$r['hipodromo']}, $n carreras");
         } catch (\Throwable $e) {
