@@ -55,6 +55,12 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
   La **historia** promedia los índices de toda la campaña, pesando más lo reciente (cada carrera pesa la mitad que la de 5
   carreras después). La **proyección** pondera como el programa viejo: (3 × historia + último + 2 × historia en la distancia) / 6,
   y **vs par de hoy** la compara con el par de la categoría de la carrera.
+- **Prob.** (`src/Modelo.php`, `php bin/modelo.php [--probar=2024-01-01]`): probabilidad de ganar de un logit condicional
+  (softmax por carrera) con la proyección, el mejor índice del año, la campaña (% de placé, último puesto, días, kilos,
+  gatera) y el % de ganadas y placé del jockey y del cuidador con cualquier caballo, en general y en ese hipódromo y tramo.
+  Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 28 % (la proyección sola, 25,5 %; el
+  favorito de las apuestas, 35 %). Los parciales (tiempos del puntero) se probaron y no mejoran. Correrlo después de
+  `bin/velocidades.php`.
 - Notas: debutante en el hipódromo o la superficie, primera vez con luz artificial, días sin correr, sube o baja de categoría
   (par de la categoría de su última carrera contra el de hoy, en el hipódromo y la distancia de hoy), vuelve con un jockey
   que ya lo montó (con cuántas ganó y fue placé), sube de peso.

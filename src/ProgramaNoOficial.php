@@ -15,7 +15,7 @@ use PDO;
  * - índice = vel. corregida − par general de esa distancia/superficie/hipódromo: sirve para comparar carreras de distinta
  *   distancia, hipódromo o categoría.
  * - historia = promedio de los índices de toda la campaña, ponderado por lo reciente: cada carrera pesa la mitad que la
- *   que corrió 5 carreras después (MEDIA_VIDA). En la distancia de hoy, lo mismo pero solo con las carreras en esa distancia.
+ *   que corrió 5 carreras después (Modelo::MEDIA_VIDA). En la distancia de hoy, lo mismo pero solo con las carreras en esa distancia.
  * - proyección = (3 × historia + último + 2 × historia en la distancia de hoy) / 6, como el programa viejo
  *   (sin carreras en la distancia: (2 × historia + último) / 3). Con las carreras de 2024 a 2026 acierta al ganador
  *   igual que con solo los últimos 6 (24 %) y ordena un poco mejor al resto del lote.
@@ -25,8 +25,6 @@ use PDO;
 final class ProgramaNoOficial
 {
     public const ANTECEDENTES = 6;
-    /** Cada cuántas carreras hacia atrás el índice pesa la mitad en la historia. */
-    public const MEDIA_VIDA = 5;
     /** Diferencia de par (km/h) entre la categoría de antes y la de hoy para avisar que sube o baja de categoría. */
     private const SALTO_CATEGORIA = 0.3;
     /** Puesta de sol aproximada por mes en Uruguay; la luz artificial se prende 20 minutos antes. */
@@ -46,7 +44,7 @@ final class ProgramaNoOficial
     private const MESES = ['ene' => 1, 'feb' => 2, 'mar' => 3, 'abr' => 4, 'may' => 5, 'jun' => 6, 'jul' => 7, 'ago' => 8,
         'set' => 9, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dic' => 12];
 
-    public function __construct(private PDO $db, private Velocidades $vel)
+    public function __construct(private PDO $db, private Velocidades $vel, private ?Modelo $modelo = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -58,6 +56,7 @@ final class ProgramaNoOficial
     public function armar(array $programa, int $hip, string $fecha, array $distancias = []): array
     {
         $carreras = [];
+        $this->modelo?->cargarPersonas($fecha);
         foreach ($programa['carreras'] as $c) {
             $sup = $c['superficie'] ?? Clasificador::superficie(null, $hip);
             // Distancia: la indicada a mano; si la reunión ya se corrió, la del resultado; si no, la del récord.
@@ -83,7 +82,8 @@ final class ProgramaNoOficial
                 $h += $this->resumen($h, $c, $fecha, $nivelHoy, $pesoTop);
             }
             unset($h);
-            $nombres = array_map(fn ($h) => self::clave($h['nombre']), $c['caballos']);
+            $this->probabilidades($c, $fecha, $nivelHoy, $pesoTop);
+            $nombres = array_map(fn ($h) => Personas::clave($h['nombre']), $c['caballos']);
             // Carreras pasadas en las que corrieron juntos dos o más caballos de hoy: carrera => números de mandil.
             $juntos = [];
             foreach ($c['caballos'] as $h) {
@@ -94,8 +94,8 @@ final class ProgramaNoOficial
             foreach ($c['caballos'] as &$h) {
                 foreach ($h['antecedentes'] as &$a) {
                     // En negrita los rivales de hoy que le ganaron o lo escoltaron.
-                    $a['primero_rival'] = $a['primero'] && self::clave($a['primero']) !== self::clave($h['nombre']) && in_array(self::clave($a['primero']), $nombres, true);
-                    $a['segundo_rival'] = $a['segundo'] && self::clave($a['segundo']) !== self::clave($h['nombre']) && in_array(self::clave($a['segundo']), $nombres, true);
+                    $a['primero_rival'] = $a['primero'] && Personas::clave($a['primero']) !== Personas::clave($h['nombre']) && in_array(Personas::clave($a['primero']), $nombres, true);
+                    $a['segundo_rival'] = $a['segundo'] && Personas::clave($a['segundo']) !== Personas::clave($h['nombre']) && in_array(Personas::clave($a['segundo']), $nombres, true);
                     $otros = array_diff_key($juntos[(int)$a['carrera_id']] ?? [], [$h['numero'] => 1]);
                     $a['con_rivales'] = $otros;
                 }
@@ -105,6 +105,27 @@ final class ProgramaNoOficial
             $carreras[] = $c;
         }
         return ['fecha' => $fecha, 'hipodromo' => $hip, 'nro_reunion' => $programa['nro_reunion'], 'carreras' => $carreras];
+    }
+
+    /** Probabilidad de ganar de cada caballo que corre (Modelo), en $h['prob']. */
+    private function probabilidades(array &$c, string $fecha, ?float $nivelHoy, float $pesoTop): void
+    {
+        $corren = array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']);
+        $rasgos = [];
+        foreach ($c['distancia'] && $this->modelo ? $corren : [] as $i => $h) {
+            $ant = array_map(fn ($a) => ['fecha' => $a['fecha'], 'indice' => $a['indice'], 'distancia' => (int)$a['distancia'],
+                'superficie' => $a['superficie'], 'puesto' => $a['puesto'] !== null ? (int)$a['puesto'] : null, 'nivel_par' => $a['nivel_par'],
+                'jockey' => Personas::jockey($a['jockey']), 'cuidador' => Personas::cuidador($a['cuidador'])], $h['antecedentes']);
+            $rasgos[$i] = $this->modelo->rasgos($ant, ['fecha' => $fecha, 'hipodromo' => $c['hipodromo'], 'distancia' => $c['distancia'],
+                'superficie' => $c['superficie'], 'nivel_par' => $nivelHoy, 'peso' => (float)$h['peso'], 'peso_max' => $pesoTop,
+                'gatera' => (int)$h['gatera'], 'corredores' => count($corren), 'jockey' => Personas::jockey($h['jockey']),
+                'cuidador' => Personas::cuidador($h['cuidador'])]);
+        }
+        $prob = $this->modelo?->probabilidades($rasgos) ?? [];
+        foreach ($c['caballos'] as $i => &$h) {
+            $h['prob'] = $prob[$i] ?? null;
+        }
+        unset($h);
     }
 
     /** Distancia de la carrera si ya está en la base (programa de una reunión que ya se corrió). */
@@ -201,6 +222,7 @@ final class ProgramaNoOficial
             $f['categoria'] = $f['nivel'] ? Velocidades::nombreCategoria($f['nivel'], $f['edad'], $f['sexo']) : null;
             $f['idx_categoria'] = $f['vel_corregida'] !== null && $par ? $f['vel_corregida'] - $par['velocidad'] : null;
             $f['indice'] = $f['vel_corregida'] !== null && $gen && !$f['cuarto_milla'] ? $f['vel_corregida'] - $gen['velocidad'] : null;
+            $f['nivel_par'] = $par && $gen ? $par['velocidad'] - $gen['velocidad'] : null;
             $res[] = $f;
         }
         return $res;
@@ -265,24 +287,18 @@ final class ProgramaNoOficial
         }
         $u = $ant[0];
         $r['dias'] = (int)((strtotime($fecha) - strtotime($u['fecha'])) / 86400);
-        if (!$h['retirado'] && $h['jockey'] && $u['jockey'] && self::claveJockey($h['jockey']) !== self::claveJockey($u['jockey'])) {
+        if (!$h['retirado'] && $h['jockey'] && $u['jockey'] && Personas::jockey($h['jockey']) !== Personas::jockey($u['jockey'])) {
             $r['cambio_jockey'] = true;
         }
-        $r['cambio_cuidador'] = $u['cuidador'] && self::clave($h['cuidador']) !== self::clave($u['cuidador']);
-        $r['cambio_stud'] = $u['stud'] && self::clave($h['stud']) !== self::clave($u['stud']);
+        $r['cambio_cuidador'] = $u['cuidador'] && Personas::clave($h['cuidador']) !== Personas::clave($u['cuidador']);
+        $r['cambio_stud'] = $u['stud'] && Personas::clave($h['stud']) !== Personas::clave($u['stud']);
         if ($c['distancia'] && max(array_map(fn ($a) => (int)$a['distancia'], $ant)) < $c['distancia']) {
             $r['sube_distancia'] = true;
         }
 
         $validos = array_values(array_filter($ant, fn ($a) => $a['indice'] !== null));
         if ($validos) {
-            $r['promedio'] = self::ponderado(array_column($validos, 'indice'));
-            $r['ultimo'] = $validos[0]['indice'];
-            $r['en_distancia'] = self::ponderado(array_column(array_filter($validos, fn ($a) => (int)$a['distancia'] === (int)$c['distancia']
-                && $a['superficie'] === $c['superficie']), 'indice'));
-            $r['proyeccion'] = $r['en_distancia'] !== null
-                ? (3 * $r['promedio'] + $r['ultimo'] + 2 * $r['en_distancia']) / 6
-                : (2 * $r['promedio'] + $r['ultimo']) / 3;
+            $r = Modelo::proyeccion($validos, (int)$c['distancia'], $c['superficie']) + $r;
             if ($nivelHoy !== null) {
                 $r['vs_par_hoy'] = $r['proyeccion'] - $nivelHoy;
             }
@@ -315,7 +331,7 @@ final class ProgramaNoOficial
             $r['notas'][] = "Viene de {$u['nivel']}";
         }
         if ($r['cambio_jockey']) {
-            $juntos = array_filter($ant, fn ($a) => $a['jockey'] && self::claveJockey($a['jockey']) === self::claveJockey($h['jockey']));
+            $juntos = array_filter($ant, fn ($a) => $a['jockey'] && Personas::jockey($a['jockey']) === Personas::jockey($h['jockey']));
             if ($juntos) {
                 $p = array_count_values(array_map(fn ($a) => (int)$a['puesto'], $juntos));
                 $podio = [];
@@ -335,18 +351,6 @@ final class ProgramaNoOficial
             $r['notas'][] = sprintf('%s kg menos que el más cargado', self::num($pesoTop - (float)$h['peso'], 1));
         }
         return $r;
-    }
-
-    /** Promedio ponderado por lo reciente (el primero es el más reciente): el peso se divide por 2 cada MEDIA_VIDA carreras. */
-    private static function ponderado(array $valores): ?float
-    {
-        $suma = $pesos = 0.0;
-        foreach (array_values($valores) as $k => $v) {
-            $w = 0.5 ** ($k / self::MEDIA_VIDA);
-            $suma += $w * $v;
-            $pesos += $w;
-        }
-        return $pesos ? $suma / $pesos : null;
     }
 
     // ---------------------------------------------------------------- HTML
@@ -388,7 +392,7 @@ final class ProgramaNoOficial
         $o .= '<header><h1>' . $e($titulo) . '</h1><p>Reunión Nº ' . $e($p['nro_reunion']) . '. Velocidades en km/h. '
             . '<b>Par</b>: promedio de los 4 primeros en pista seca y sin viento para esa distancia, superficie y categoría. '
             . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal). '
-            . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
+            . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>Prob.</b>: probabilidad de ganar según un modelo que combina la proyección, la campaña del caballo y cómo vienen ganando su jockey y su cuidador (con cualquier caballo); el resumen se ordena por ella. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
         }
@@ -463,13 +467,14 @@ final class ProgramaNoOficial
 
         // Resumen ordenado por "vs par de hoy".
         $orden = $c['caballos'];
-        usort($orden, fn ($a, $b) => [$a['retirado'], $b['vs_par_hoy'] ?? $b['proyeccion'] ?? -99] <=> [$b['retirado'], $a['vs_par_hoy'] ?? $a['proyeccion'] ?? -99]);
+        usort($orden, fn ($a, $b) => [$a['retirado'], $b['prob'] ?? -1, $b['vs_par_hoy'] ?? $b['proyeccion'] ?? -99] <=> [$b['retirado'], $a['prob'] ?? -1, $a['vs_par_hoy'] ?? $a['proyeccion'] ?? -99]);
         $o .= '<table class="resumen"><thead><tr><th>Nº</th><th>Caballo</th><th>Kg</th><th>Gat.</th><th title="Índices de toda la campaña, pesando más las últimas carreras">Historia</th><th>Último</th>'
-            . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
+            . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . self::mandil($h['numero']) . '</td><td>' . $e($h['nombre']) . '</td><td>' . self::num($h['peso'], 1)
                 . '</td><td>' . $e($h['gatera']) . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo']) . '</td><td>' . self::idx($h['en_distancia'])
-                . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td>' . $e($h['dias'])
+                . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">' . ($h['prob'] !== null ? self::num(100 * $h['prob'], 0) . ' %' : '')
+                . '</td><td>' . $e($h['dias'])
                 . '</td><td>' . ($h['retirado'] ? 'No correrá' : ($h['suplente'] ? 'Suplente. ' : '') . (!$h['antecedentes'] ? 'Debutante' : $e(implode('. ', $h['notas'])))) . '</td></tr>';
         }
         $o .= '</tbody></table>';
@@ -533,20 +538,6 @@ final class ProgramaNoOficial
         }
         $clase = $v >= 0.25 ? 'mas' : ($v <= -0.25 ? 'menos' : 'igual');
         return '<span class="' . $clase . '">' . ($v > 0 ? '+' : '') . number_format($v, 2, ',', '.') . '</span>';
-    }
-
-    private static function clave(?string $s): string
-    {
-        $s = preg_replace('/\s*\([^)]*\)\s*$/u', '', (string)$s);
-        $s = strtr(mb_strtolower(trim($s)), ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n', '.' => '', "'" => '']);
-        return preg_replace('/\s+/', ' ', $s);
-    }
-
-    /** "Deividi Gaier" y "D. Gaier" son el mismo jockey: inicial del nombre + último apellido. */
-    private static function claveJockey(string $s): string
-    {
-        $p = explode(' ', self::clave($s));
-        return mb_substr($p[0], 0, 1) . ' ' . end($p);
     }
 
     public static function nombreHipodromo(int $id): string

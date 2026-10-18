@@ -52,3 +52,11 @@ CREATE TABLE IF NOT EXISTS record_distancia (
   carreras     INT UNSIGNED NOT NULL,          -- cuántas carreras confirman el dato
   PRIMARY KEY (hipodromo_id, superficie, record, distancia)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Coeficientes del modelo de probabilidad de ganar (src/Modelo.php); los recalcula bin/modelo.php.
+CREATE TABLE IF NOT EXISTS modelo_coef (
+  variable     VARCHAR(40) PRIMARY KEY,
+  media        DOUBLE NOT NULL,                -- para estandarizar la variable
+  desvio       DOUBLE NOT NULL,
+  coeficiente  DOUBLE NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
