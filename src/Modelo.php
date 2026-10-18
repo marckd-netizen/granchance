@@ -21,11 +21,14 @@ final class Modelo
     public const VARIABLES = ['proyeccion', 'mejor_anio', 'debutante', 'carreras', 'pct_ganadas', 'pct_place', 'dias', 'dias2',
         'ultimo_puesto', 'gano_ultima', 'cambio_categoria', 'kg_menos', 'gatera', 'mismo_jockey', 'mismo_cuidador',
         'jockey_gana', 'cuidador_gana', 'jockey_gana_tramo', 'cuidador_gana_tramo', 'jockey_place', 'cuidador_place', 'frente_rivales',
-        'mercado_ultima', 'mercado_prom', 'sin_mercado', 'padre_gana', 'padre_place', 'padre_tramo', 'abuelo_gana', 'madre_gana'];
+        'mercado_ultima', 'mercado_prom', 'sin_mercado', 'padre_gana', 'padre_place', 'padre_tramo', 'abuelo_gana', 'madre_gana', 'gatera_gana', 'gatera_place'];
     public const MEDIA_VIDA = 5;            // carreras: cada 5 carreras hacia atrás el índice pesa la mitad
     private const MEDIA_VIDA_DIAS = 180;
-    /** Media vida (días) de las estadísticas de pedigrí: padre, padre en superficie y tramo, abuelo materno y madre. */
-    private const MEDIA_VIDA_PEDIGRI = ['p' => 730, 'pt' => 730, 'a' => 730, 'm' => 1460];
+    /**
+     * Media vida (días) de las estadísticas que cambian despacio: padre, padre en superficie y tramo, abuelo materno,
+     * madre y gatera en cada hipódromo, distancia y superficie.
+     */
+    private const MEDIA_VIDA_LARGA = ['p' => 730, 'pt' => 730, 'a' => 730, 'm' => 1460, 'g' => 1460];
     private const SIN_MERCADO = -2.3;      // log de 10 %: lo que paga un caballo promedio
     private const SIN_DATO = -1.5;          // proyección de un debutante
     private const MIN_CORREDORES = 5;
@@ -118,6 +121,9 @@ final class Modelo
             'padre_tramo' => $this->tasa('pt|' . ($hoy['padre'] ?? '') . "|{$hoy['superficie']}|$tramo", $t, 0, 30),
             'abuelo_gana' => $this->tasa('a|' . ($hoy['abuelo'] ?? ''), $t, 0, 30),
             'madre_gana' => $this->tasa('m|' . ($hoy['madre'] ?? ''), $t, 0, 30),
+            // Cuánto gana y entra en el marcador esa gatera en ese hipódromo, distancia y superficie.
+            'gatera_gana' => $this->tasa(self::claveGatera($hoy), $t, 0, 50),
+            'gatera_place' => $this->tasa(self::claveGatera($hoy), $t, 1, 50),
             'jockey_gana' => $this->tasa('j|' . $hoy['jockey'], $t, 0),
             'cuidador_gana' => $this->tasa('c|' . $hoy['cuidador'], $t, 0),
             'jockey_gana_tramo' => $this->tasa("j|{$hoy['jockey']}|{$hoy['hipodromo']}|$tramo", $t, 0),
@@ -180,7 +186,7 @@ final class Modelo
             return [0.0, 0.0, 0.0];
         }
         [$g, $pl, $r, $t0] = $this->est[$k];
-        $f = 0.5 ** (($t - $t0) / (self::MEDIA_VIDA_PEDIGRI[strstr($k, '|', true)] ?? self::MEDIA_VIDA_DIAS));
+        $f = 0.5 ** (($t - $t0) / (self::MEDIA_VIDA_LARGA[strstr($k, '|', true)] ?? self::MEDIA_VIDA_DIAS));
         return [$g * $f, $pl * $f, $r * $f];
     }
 
@@ -196,6 +202,9 @@ final class Modelo
         if ($f['padre'] !== '') {
             $claves[] = "pt|{$f['padre']}|{$f['sup']}|$tramo";
         }
+        if (($f['corrio'] ?? true) && (int)$f['gatera'] > 0) {
+            $claves[] = self::claveGatera(['hipodromo' => $f['hip'], 'distancia' => $f['dist'], 'superficie' => $f['sup'], 'gatera' => $f['gatera']]);
+        }
         $puesto = $f['puesto'];
         foreach ($claves as $k) {
             [$g, $pl, $r] = $this->decaido($k, $t);
@@ -208,7 +217,8 @@ final class Modelo
     {
         $this->est = [];
         $st = $this->db->prepare(
-            'SELECT r.fecha, r.hipodromo_id, c.distancia, c.superficie, a.puesto, j.nombre AS jockey, cu.nombre AS cuidador,
+            'SELECT r.fecha, r.hipodromo_id, c.distancia, c.superficie, a.puesto, a.gatera, a.sport, a.dist_acumulada,
+                    j.nombre AS jockey, cu.nombre AS cuidador,
                     ca.padre, ca.madre, ca.abuelo_materno
              FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id
              JOIN caballo ca ON ca.id = a.caballo_id
@@ -220,9 +230,15 @@ final class Modelo
             $hip = (int)$f['hipodromo_id'];
             $this->sumar(['jockey' => Personas::jockey($f['jockey']), 'cuidador' => Personas::cuidador($f['cuidador']), 'hip' => $hip,
                 'dist' => (int)$f['distancia'], 'sup' => Clasificador::superficie($f['superficie'], $hip),
-                'puesto' => $f['puesto'] !== null ? (int)$f['puesto'] : null] + self::pedigri($f['padre'], $f['madre'], $f['abuelo_materno']),
+                'puesto' => $f['puesto'] !== null ? (int)$f['puesto'] : null, 'gatera' => $f['gatera'],
+                'corrio' => $f['puesto'] !== null || $f['sport'] !== null || $f['dist_acumulada'] !== null] + self::pedigri($f['padre'], $f['madre'], $f['abuelo_materno']),
                 self::dia($f['fecha']));
         }
+    }
+
+    private static function claveGatera(array $c): string
+    {
+        return "g|{$c['hipodromo']}|{$c['distancia']}|{$c['superficie']}|" . (int)$c['gatera'];
     }
 
     /** Claves de padre, madre y abuelo materno. */
