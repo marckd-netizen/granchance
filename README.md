@@ -61,11 +61,14 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
   y **vs par de hoy** la compara con el par de la categoría de la carrera.
 - **Prob.** (`src/Modelo.php`, `php bin/modelo.php [--probar=2024-01-01]`): probabilidad de ganar de un logit condicional
   (softmax por carrera) con la proyección, el mejor índice del año, la campaña (% de placé, último puesto, días, kilos,
-  gatera), cómo le fue contra los rivales de hoy cuando corrieron juntos y el % de ganadas y placé del jockey y del cuidador
+  gatera), cómo le fue contra los rivales de hoy cuando corrieron juntos, qué probabilidad le daban los dividendos en sus
+  últimas carreras, cómo corren los hijos de su padre (en general y en esa superficie y tramo), de su madre y de su abuelo
+  materno, y el % de ganadas y placé del jockey y del cuidador
   con cualquier caballo, en general y en ese hipódromo y tramo. Los puntajes se dividen por una escala calibrada con los
   últimos 2 años para que las probabilidades altas no salgan exageradas.
-  Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 30,1 % (la proyección sola, 27,7 %; el
-  favorito de las apuestas, 35 %). Los parciales (tiempos del puntero) se probaron y no mejoran. Correrlo después de
+  Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 30,7 % (la proyección sola, 27,7 %; el
+  favorito de las apuestas, 35 %). Se probaron y no mejoran: los parciales (tiempos del puntero), la racha de 30 días de
+  jockey y cuidador, el peso del caballo y el tratamiento, y un modelo de árboles (LightGBM) en lugar del logit. Correrlo después de
   `bin/velocidades.php`.
 - Notas: debutante en el hipódromo o la superficie, primera vez con luz artificial, días sin correr, sube o baja de categoría
   (par de la categoría de su última carrera contra el de hoy, en el hipódromo y la distancia de hoy), vuelve con un jockey

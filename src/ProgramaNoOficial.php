@@ -151,17 +151,33 @@ final class ProgramaNoOficial
         foreach ($c['distancia'] && $this->modelo ? $corren : [] as $i => $h) {
             $ant = array_map(fn ($a) => ['fecha' => $a['fecha'], 'indice' => $a['indice'], 'distancia' => (int)$a['distancia'],
                 'superficie' => $a['superficie'], 'puesto' => $a['puesto'] !== null ? (int)$a['puesto'] : null, 'nivel_par' => $a['nivel_par'],
-                'jockey' => Personas::jockey($a['jockey']), 'cuidador' => Personas::cuidador($a['cuidador'])], $h['antecedentes']);
+                'jockey' => Personas::jockey($a['jockey']), 'cuidador' => Personas::cuidador($a['cuidador']),
+                'mercado' => $a['sport'] > 0 && $a['suma_inversa'] ? 1 / $a['sport'] / $a['suma_inversa'] : null], $h['antecedentes']);
             $rasgos[$i] = $this->modelo->rasgos($ant, ['fecha' => $fecha, 'hipodromo' => $c['hipodromo'], 'distancia' => $c['distancia'],
                 'superficie' => $c['superficie'], 'nivel_par' => $nivelHoy, 'peso' => (float)$h['peso'], 'peso_max' => $pesoTop,
                 'gatera' => (int)$h['gatera'], 'corredores' => count($corren), 'jockey' => Personas::jockey($h['jockey']),
-                'cuidador' => Personas::cuidador($h['cuidador']), 'frente' => $h['frente_indice']]);
+                'cuidador' => Personas::cuidador($h['cuidador']), 'frente' => $h['frente_indice']] + $this->pedigri($h));
         }
         $prob = $this->modelo?->probabilidades($rasgos) ?? [];
         foreach ($c['caballos'] as $i => &$h) {
             $h['prob'] = $prob[$i] ?? null;
         }
         unset($h);
+    }
+
+    /**
+     * Padre, madre y abuelo materno: de la base si el caballo ya corrió; si es debutante, del pedigrí del programa
+     * ("Will Take Charge y Hollywood Diva"), y el abuelo materno del padre de la madre si ella está en la base.
+     */
+    private function pedigri(array $h): array
+    {
+        if ($a = $h['antecedentes'][0] ?? null) {
+            return Modelo::pedigri($a['padre'], $a['madre'], $a['abuelo_materno']);
+        }
+        [$padre, $madre] = array_map('trim', explode(' y ', (string)$h['pedigri'], 2)) + [1 => ''];
+        $st = $this->db->prepare('SELECT padre FROM caballo WHERE nombre = ? ORDER BY anio_nac LIMIT 1');
+        $st->execute([$madre]);
+        return Modelo::pedigri($padre, $madre, $st->fetchColumn() ?: null);
     }
 
     /** Distancia de la carrera si ya está en la base (programa de una reunión que ya se corrió). */
@@ -218,7 +234,9 @@ final class ProgramaNoOficial
                     a.peso_asignado, a.peso_real, a.dist_acumulada, a.sport, a.tratamiento, a.marca, a.retiro_motivo,
                     j.nombre AS jockey, cu.nombre AS cuidador, s.nombre AS stud,
                     cc.nivel, cc.edad, cc.sexo,
-                    (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = a.carrera_id) AS corredores
+                    (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = a.carrera_id) AS corredores,
+                    (SELECT SUM(1 / x.sport) FROM actuacion x WHERE x.carrera_id = a.carrera_id AND x.sport > 0) AS suma_inversa,
+                    ca.padre, ca.madre, ca.abuelo_materno
              FROM caballo ca
              JOIN actuacion a ON a.caballo_id = ca.id
              JOIN carrera c ON c.id = a.carrera_id
