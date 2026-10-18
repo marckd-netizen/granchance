@@ -10,8 +10,9 @@ return [
     'url_resultados' => 'https://mobile-rest-services-v3.azurewebsites.net//XTurfResourcesService.svc/GetRacingDocument'
         . '?docType=ResultadoCarreraWeb&racetrackId={hipodromo}&date={fecha}&periodId=0&raceNum=0'
         . '&language=es-UY&docOrd=0&exportFormat=ExcelRecord',
-    // racetrackId que se recorren. 1 = el del ejemplo; el resto se confirma con bin/descubrir.php.
-    'hipodromos' => [1],
+    // racetrackId que se recorren (confirmados con bin/descubrir.php en oct. 2026):
+    // 1 Maroñas, 4 Colonia, 8 Flores, 9 Florida, 13 Las Piedras, 16 Melo, 21 Paysandú, 22 Rocha.
+    'hipodromos' => [1, 4, 8, 9, 13, 16, 21, 22],
     'pausa_segundos' => 2,          // entre pedidos, para no cargar el servidor
     'carpeta_crudos' => __DIR__ . '/raw',
 ];
