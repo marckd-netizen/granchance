@@ -105,7 +105,7 @@ final class ParserResultados
     {
         $car = [
             'numero' => $numero, 'id' => $id, 'premio' => trim(rtrim(trim($premio), '- ')),
-            'distancia' => null, 'hora' => null, 'pista' => null, 'viento' => null,
+            'distancia' => null, 'hora' => null, 'superficie' => null, 'pista' => null, 'viento' => null,
             'condicion' => null, 'bolsa' => null, 'bolsa_detalle' => null,
             'tiempo_ganador' => null, 'tiempo_ganador_seg' => null, 'parciales' => null, 'retirados' => null, 'comentario' => null,
             'apuestas' => [], 'actuaciones' => [],
@@ -124,7 +124,14 @@ final class ParserResultados
             $car['hora'] = sprintf('%s-%02d-%02d %02d:%s:00', $m[3], $mes, $dia, $hora, $m[5]);
         }
         if (preg_match('/Pista\s+([^.]+)\./u', $c1, $m)) {
-            $car['pista'] = trim($m[1]);
+            // "seca", o en 2018 "arena - seca" / "cesped - seca" / "- seca" (superficie y estado)
+            $p = explode('-', $m[1], 2);
+            if (count($p) === 2) {
+                $car['superficie'] = trim($p[0]) !== '' ? str_replace('cesped', 'césped', trim($p[0])) : null;
+                $car['pista'] = trim($p[1]);
+            } else {
+                $car['pista'] = trim($m[1]);
+            }
         }
         if (preg_match('/Viento\s+(.+)$/u', $c1, $m)) {
             $car['viento'] = trim($m[1]);

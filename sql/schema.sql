@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS carrera (
   premio          VARCHAR(150) NULL,
   distancia       SMALLINT UNSIGNED NULL,         -- metros
   hora            DATETIME NULL,
-  pista           VARCHAR(40) NULL,               -- seca, pesada...
+  superficie      VARCHAR(10) NULL,               -- arena / césped; el Excel solo lo indica en 2018 (NULL = sin dato)
+  pista           VARCHAR(40) NULL,               -- estado: seca, húmeda, pesada, fangosa
   viento          VARCHAR(40) NULL,
   condicion       TEXT NULL,
   bolsa           DECIMAL(12,2) NULL,

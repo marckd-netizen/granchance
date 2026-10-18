@@ -64,16 +64,16 @@ final class Repositorio
     private function guardarCarrera(int $reunionId, array $c): void
     {
         $this->db->prepare(
-            'INSERT INTO carrera (nro_oficial, reunion_id, numero, premio, distancia, hora, pista, viento, condicion, bolsa, bolsa_detalle,
+            'INSERT INTO carrera (nro_oficial, reunion_id, numero, premio, distancia, hora, superficie, pista, viento, condicion, bolsa, bolsa_detalle,
                 tiempo_ganador, tiempo_ganador_seg, parciales, retirados, comentario)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), nro_oficial = VALUES(nro_oficial), premio = VALUES(premio),
-                distancia = VALUES(distancia), hora = VALUES(hora), pista = VALUES(pista), viento = VALUES(viento),
+                distancia = VALUES(distancia), hora = VALUES(hora), superficie = VALUES(superficie), pista = VALUES(pista), viento = VALUES(viento),
                 condicion = VALUES(condicion), bolsa = VALUES(bolsa), bolsa_detalle = VALUES(bolsa_detalle),
                 tiempo_ganador = VALUES(tiempo_ganador), tiempo_ganador_seg = VALUES(tiempo_ganador_seg), parciales = VALUES(parciales), retirados = VALUES(retirados),
                 comentario = VALUES(comentario)'
         )->execute([
-            $c['id'], $reunionId, $c['numero'], $c['premio'], $c['distancia'], $c['hora'], $c['pista'], $c['viento'],
+            $c['id'], $reunionId, $c['numero'], $c['premio'], $c['distancia'], $c['hora'], $c['superficie'], $c['pista'], $c['viento'],
             $c['condicion'], $c['bolsa'], $c['bolsa_detalle'], $c['tiempo_ganador'], $c['tiempo_ganador_seg'], $c['parciales'], $c['retirados'], $c['comentario'],
         ]);
         $carreraId = (int)$this->db->lastInsertId();
