@@ -12,8 +12,9 @@ use PDO;
  * Índices (todos en km/h):
  * - vel. corregida = velocidad real − ajuste de la pista y el viento de ese día (medido con los datos, ver Velocidades).
  * - índice categoría = vel. corregida − par de la categoría de esa carrera (cómo corrió frente a los 4 primeros normales de esa categoría).
- * - índice = vel. corregida − par general de esa distancia/superficie/hipódromo: sirve para comparar carreras de distinta
- *   distancia, hipódromo o categoría.
+ * - índice = vel. corregida − par general de esa distancia/superficie/hipódromo, pasado a la escala del hipódromo de
+ *   hoy (un índice de Maroñas suma unos 0,5 km/h en Las Piedras: allá corren caballos mejores, ver Velocidades::equivalencia).
+ *   Sirve para comparar carreras de distinta distancia, hipódromo o categoría.
  * - historia = promedio de los índices de toda la campaña, ponderado por lo reciente: cada carrera pesa la mitad que la
  *   que corrió 5 carreras después (Modelo::MEDIA_VIDA). En la distancia de hoy, lo mismo pero solo con las carreras en esa distancia.
  * - proyección = (3 × historia + último + 2 × historia en la distancia de hoy) / 6, como el programa viejo
@@ -77,7 +78,7 @@ final class ProgramaNoOficial
 
             foreach ($c['caballos'] as &$h) {
                 $h['anio_nac'] = Clasificador::anioNac($h['edad'], $fecha);
-                $h['antecedentes'] = $this->antecedentes($h['nombre'], $h['pais'], $h['anio_nac'], $fecha);
+                $h['antecedentes'] = $this->antecedentes($h['nombre'], $h['pais'], $h['anio_nac'], $fecha, $hip);
                 $h['campania'] = $h['antecedentes'] ? $this->campania($h['nombre'], $h['pais'], $h['anio_nac'], $fecha) : null;
                 $h += $this->resumen($h, $c, $fecha, $nivelHoy, $pesoTop);
             }
@@ -174,7 +175,7 @@ final class ProgramaNoOficial
     }
 
     /** Últimas actuaciones del caballo (mismo nombre, país y año de nacimiento) antes de la fecha. */
-    private function antecedentes(string $nombre, string $pais, int $anioNac, string $fecha): array
+    private function antecedentes(string $nombre, string $pais, int $anioNac, string $fecha, int $hipHoy): array
     {
         $st = $this->db->prepare(
             "SELECT a.carrera_id, r.fecha, r.hipodromo_id, c.numero, c.distancia, c.superficie, c.pista, c.viento, c.premio,
@@ -221,8 +222,10 @@ final class ProgramaNoOficial
             $gen = $this->vel->parGeneral($hip, $dist, $sup);
             $f['categoria'] = $f['nivel'] ? Velocidades::nombreCategoria($f['nivel'], $f['edad'], $f['sexo']) : null;
             $f['idx_categoria'] = $f['vel_corregida'] !== null && $par ? $f['vel_corregida'] - $par['velocidad'] : null;
-            $f['indice'] = $f['vel_corregida'] !== null && $gen && !$f['cuarto_milla'] ? $f['vel_corregida'] - $gen['velocidad'] : null;
-            $f['nivel_par'] = $par && $gen ? $par['velocidad'] - $gen['velocidad'] : null;
+            // Índice y nivel de la categoría pasados a la escala del hipódromo de hoy (ver Velocidades::equivalencia).
+            $eq = $this->vel->equivalencia($hipHoy) - $this->vel->equivalencia($hip);
+            $f['indice'] = $f['vel_corregida'] !== null && $gen && !$f['cuarto_milla'] ? $f['vel_corregida'] - $gen['velocidad'] + $eq : null;
+            $f['nivel_par'] = $par && $gen ? $par['velocidad'] - $gen['velocidad'] + $eq : null;
             $res[] = $f;
         }
         return $res;
@@ -391,7 +394,7 @@ final class ProgramaNoOficial
         $o .= $this->htmlNavegacion($p, $fechas, $enlace, $e);
         $o .= '<header><h1>' . $e($titulo) . '</h1><p>Reunión Nº ' . $e($p['nro_reunion']) . '. Velocidades en km/h. '
             . '<b>Par</b>: promedio de los 4 primeros en pista seca y sin viento para esa distancia, superficie y categoría. '
-            . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal). '
+            . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal), llevado a este hipódromo (lo corrido en un hipódromo más fuerte vale más). '
             . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>Prob.</b>: probabilidad de ganar según un modelo que combina la proyección, la campaña del caballo y cómo vienen ganando su jockey y su cuidador (con cualquier caballo); el resumen se ordena por ella. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);

@@ -24,6 +24,10 @@ final class Velocidades
     private array $par = [];
     /** @var array<string, array{carreras:int, ajuste:float}> */
     private array $ajustes = [];
+    /** @var array<int, float> hipódromo => cuánto más alto da el índice ahí que en Maroñas con los mismos caballos */
+    private array $equivalencias = [];
+    private const MIN_PARES = 100;
+    private const EQUIVALENCIA_INTERIOR = 1.2;      // caballos que pasaron de un hipódromo a otro, para confiar en la equivalencia
 
     public function __construct(private PDO $db)
     {
@@ -98,12 +102,18 @@ final class Velocidades
         }
 
         $this->guardar($carreras);
-        return ['carreras' => count($carreras), 'pares' => count($this->par), 'ajustes' => count($this->ajustes)];
+        $this->calcularEquivalencias();
+        return ['carreras' => count($carreras), 'pares' => count($this->par), 'ajustes' => count($this->ajustes),
+            'equivalencias' => count($this->equivalencias)];
     }
 
     /** Carga las tablas ya calculadas. */
     public function cargar(): void
     {
+        $this->equivalencias = [];
+        foreach ($this->db->query('SELECT hipodromo_id, ajuste FROM equivalencia_hipodromo', PDO::FETCH_ASSOC) as $r) {
+            $this->equivalencias[(int)$r['hipodromo_id']] = (float)$r['ajuste'];
+        }
         $this->par = [];
         foreach ($this->db->query('SELECT * FROM par_velocidad', PDO::FETCH_ASSOC) as $r) {
             $k = self::clavePar((int)$r['hipodromo_id'], (int)$r['distancia'], $r['superficie'], $r['nivel'], $r['edad'], $r['sexo']);
@@ -152,6 +162,108 @@ final class Velocidades
             }
         }
         return null;
+    }
+
+    /**
+     * Índice contra el par general de su hipódromo (km/h, 0 = normal ahí), sin pasar a otro hipódromo.
+     */
+    public function indiceLocal(int $hip, int $distancia, string $superficie, string $pista, string $viento, float $segundos): ?float
+    {
+        $v = self::kmh($distancia, $segundos);
+        $aj = $v !== null ? $this->ajuste($hip, $superficie, $distancia, $pista, $viento) : null;
+        $gen = $aj !== null ? $this->parGeneral($hip, $distancia, $superficie) : null;
+        return $gen ? $v - $aj['ajuste'] - $gen['velocidad'] : null;
+    }
+
+    /**
+     * Para pasar un índice de un hipódromo a otro: el par general de cada hipódromo mide a sus propios caballos, y en
+     * Maroñas corren caballos mejores, así que un 0 en Maroñas vale más que un 0 en Las Piedras. Sumar
+     * equivalencia(hoy) − equivalencia(antes) a un índice lo lleva a la escala del hipódromo de hoy.
+     */
+    public function equivalencia(int $hip): float
+    {
+        // Hipódromo con pocos pases: se lo trata como uno del interior.
+        return $this->equivalencias[$hip] ?? self::EQUIVALENCIA_INTERIOR;
+    }
+
+    /**
+     * Equivalencia entre hipódromos con los caballos que corrieron en uno y a los 90 días o menos en otro: cuánto cambia
+     * su índice al pasar de A a B (descontando lo que cambia corriendo dos veces en el mismo), resuelto por mínimos
+     * cuadrados para todos los hipódromos a la vez, con Maroñas = 0.
+     */
+    private function calcularEquivalencias(): void
+    {
+        $st = $this->db->query(
+            "SELECT a.caballo_id, r.fecha, r.hipodromo_id, c.distancia, c.superficie, c.pista, c.viento, a.tiempo_seg
+             FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id
+             LEFT JOIN carrera_categoria cc ON cc.carrera_id = c.id
+             WHERE a.tiempo_seg IS NOT NULL AND (cc.nivel IS NULL OR cc.nivel <> 'Cuarto de milla')
+             ORDER BY a.caballo_id, r.fecha",
+            PDO::FETCH_ASSOC
+        );
+        $pares = [];       // "A|B" => [suma, cantidad]
+        $mismo = [0.0, 0];
+        $ant = null;
+        foreach ($st as $f) {
+            $hip = (int)$f['hipodromo_id'];
+            $idx = $this->indiceLocal($hip, (int)$f['distancia'], Clasificador::superficie($f['superficie'], $hip),
+                Clasificador::pista($f['pista']), self::viento($f['viento']), (float)$f['tiempo_seg']);
+            $t = strtotime($f['fecha']);
+            if ($idx !== null && $ant && $ant['caballo'] === $f['caballo_id'] && $t - $ant['t'] <= 90 * 86400) {
+                if ($ant['hip'] === $hip) {
+                    $mismo = [$mismo[0] + $idx - $ant['idx'], $mismo[1] + 1];
+                } else {
+                    $k = $ant['hip'] . '|' . $hip;
+                    $pares[$k] = [($pares[$k][0] ?? 0) + $idx - $ant['idx'], ($pares[$k][1] ?? 0) + 1];
+                }
+            }
+            if ($idx !== null) {
+                $ant = ['caballo' => $f['caballo_id'], 'hip' => $hip, 't' => $t, 'idx' => $idx];
+            }
+        }
+        $base = $mismo[1] ? $mismo[0] / $mismo[1] : 0.0;
+        $cuenta = [];
+        foreach ($pares as $k => [, $n]) {
+            foreach (explode('|', $k) as $h) {
+                $cuenta[(int)$h] = ($cuenta[(int)$h] ?? 0) + $n;
+            }
+        }
+        $hips = array_values(array_filter(array_keys($cuenta), fn ($h) => $h !== 1 && $cuenta[$h] >= self::MIN_PARES));
+        $pos = array_flip($hips);
+        $n = count($hips);
+        $A = array_fill(0, $n, array_fill(0, $n, 0.0));
+        $b = array_fill(0, $n, 0.0);
+        foreach ($pares as $k => [$suma, $cant]) {
+            [$h1, $h2] = array_map('intval', explode('|', $k));
+            if (($h1 !== 1 && !isset($pos[$h1])) || ($h2 !== 1 && !isset($pos[$h2]))) {
+                continue;
+            }
+            // Cada pase aporta d ≈ eq(h2) − eq(h1); se suma la ecuación normal ponderada por la cantidad de caballos.
+            $d = $suma / $cant - $base;
+            $coef = [];
+            if ($h2 !== 1) {
+                $coef[$pos[$h2]] = 1.0;
+            }
+            if ($h1 !== 1) {
+                $coef[$pos[$h1]] = -1.0;
+            }
+            foreach ($coef as $i => $ci) {
+                foreach ($coef as $j => $cj) {
+                    $A[$i][$j] += $cant * $ci * $cj;
+                }
+                $b[$i] += $cant * $ci * $d;
+            }
+        }
+        $x = $n ? Modelo::resolver($A, $b) : [];
+        $this->equivalencias = [1 => 0.0];
+        foreach ($hips as $i => $h) {
+            $this->equivalencias[$h] = $x[$i];
+        }
+        $this->db->exec('DELETE FROM equivalencia_hipodromo');
+        $ins = $this->db->prepare('INSERT INTO equivalencia_hipodromo (hipodromo_id, ajuste, pares) VALUES (?, ?, ?)');
+        foreach ($this->equivalencias as $h => $e) {
+            $ins->execute([$h, $e, $cuenta[$h] ?? 0]);
+        }
     }
 
     public static function nombreCategoria(string $nivel, string $edad, string $sexo): string

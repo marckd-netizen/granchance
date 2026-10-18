@@ -10,7 +10,7 @@ use PDO;
  * velocidad, la campaña del caballo y cómo vienen ganando su jockey y su cuidador, con cualquier caballo.
  *
  * Probado entrenando con 2019-2023 y midiendo en las carreras de 2024-2026 (que el modelo no vio), el caballo con más
- * probabilidad ganó el 28 % de las veces, contra 25,5 % ordenando solo por la proyección (el favorito de las apuestas
+ * probabilidad ganó el 29,6 % de las veces, contra 27,7 % ordenando solo por la proyección (el favorito de las apuestas
  * gana el 35 %). Los parciales (tiempos del puntero) no mejoraron nada y no se usan.
  *
  * Jockeys y cuidadores: % de carreras ganadas y % en el marcador (1º a 3º), en general y en ese hipódromo y tramo de
@@ -268,7 +268,7 @@ final class Modelo
         return $res;
     }
 
-    /** Fila de la base → corredor con su índice y el nivel de su categoría. */
+    /** Fila de la base → corredor con su índice y el nivel de su categoría, en la escala de Maroñas (Velocidades::equivalencia). */
     private function fila(array $f): array
     {
         $hip = (int)$f['hipodromo_id'];
@@ -279,11 +279,11 @@ final class Modelo
         if ($gen && $f['tiempo_seg'] !== null && $f['nivel'] !== 'Cuarto de milla') {
             $v = Velocidades::kmh($dist, (float)$f['tiempo_seg']);
             $aj = $this->vel->ajuste($hip, $sup, $dist, Clasificador::pista($f['pista']), Velocidades::viento($f['viento']));
-            $indice = $v !== null && $aj ? $v - $aj['ajuste'] - $gen['velocidad'] : null;
+            $indice = $v !== null && $aj ? $v - $aj['ajuste'] - $gen['velocidad'] - $this->vel->equivalencia($hip) : null;
         }
         if ($gen && $f['nivel']) {
             $par = $this->vel->par($hip, $dist, $sup, $f['nivel'], $f['edad'], $f['sexo']);
-            $nivelPar = $par ? $par['velocidad'] - $gen['velocidad'] : null;
+            $nivelPar = $par ? $par['velocidad'] - $gen['velocidad'] - $this->vel->equivalencia($hip) : null;
         }
         return ['carrera_id' => (int)$f['carrera_id'], 'caballo_id' => (int)$f['caballo_id'], 'fecha' => $f['fecha'], 'hip' => $hip,
             'dist' => $dist, 'sup' => $sup, 'puesto' => $f['puesto'] !== null ? (int)$f['puesto'] : null, 'indice' => $indice,
@@ -415,7 +415,7 @@ final class Modelo
     }
 
     /** Resuelve H·x = g por eliminación gaussiana con pivoteo parcial. */
-    private static function resolver(array $H, array $g): array
+    public static function resolver(array $H, array $g): array
     {
         $n = count($g);
         for ($i = 0; $i < $n; $i++) {

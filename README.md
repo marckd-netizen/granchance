@@ -50,6 +50,10 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
   superficie y categoría. Con menos de 8 carreras se usa el nivel más general (sin sexo, sin edad, todas las categorías).
 - **Ajuste de pista y viento** (`ajuste_condicion`): cuánto más rápido o lento que el par corren los 4 primeros con cada estado
   de pista y viento, por hipódromo, superficie y tramo (corta hasta 1200 m, media hasta 1600 m, larga). Sale de los datos.
+- **Equivalencia entre hipódromos** (`equivalencia_hipodromo`): el par de cada hipódromo mide a sus propios caballos, y en
+  Maroñas corren mejores. Con los caballos que pasan de un hipódromo a otro en 90 días o menos se mide cuánto cambia su
+  índice: Las Piedras +0,52, Colonia +1,06, Florida +1,23, Paysandú +1,22, Melo +1,30, Rocha +1,49 respecto de Maroñas.
+  Los índices de los antecedentes se pasan a la escala del hipódromo de hoy (subió el acierto del modelo de 28,2 % a 29,6 %).
 - En el programa, cada antecedente muestra la velocidad, el ajuste, la velocidad corregida, el **índice de categoría**
   (contra el par de su categoría) y el **índice** (contra el par general de esa distancia: compara distancias, hipódromos y categorías).
   La **historia** promedia los índices de toda la campaña, pesando más lo reciente (cada carrera pesa la mitad que la de 5
@@ -58,7 +62,7 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 - **Prob.** (`src/Modelo.php`, `php bin/modelo.php [--probar=2024-01-01]`): probabilidad de ganar de un logit condicional
   (softmax por carrera) con la proyección, el mejor índice del año, la campaña (% de placé, último puesto, días, kilos,
   gatera) y el % de ganadas y placé del jockey y del cuidador con cualquier caballo, en general y en ese hipódromo y tramo.
-  Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 28 % (la proyección sola, 25,5 %; el
+  Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 29,6 % (la proyección sola, 27,7 %; el
   favorito de las apuestas, 35 %). Los parciales (tiempos del puntero) se probaron y no mejoran. Correrlo después de
   `bin/velocidades.php`.
 - Notas: debutante en el hipódromo o la superficie, primera vez con luz artificial, días sin correr, sube o baja de categoría

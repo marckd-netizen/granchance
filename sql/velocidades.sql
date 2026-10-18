@@ -60,3 +60,11 @@ CREATE TABLE IF NOT EXISTS modelo_coef (
   desvio       DOUBLE NOT NULL,
   coeficiente  DOUBLE NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Equivalencia entre hipódromos (km/h): cuánto más alto da el índice ahí que en Maroñas con los mismos caballos.
+-- Sale de los caballos que corrieron en dos hipódromos con 90 días o menos de diferencia (Velocidades::equivalencia).
+CREATE TABLE IF NOT EXISTS equivalencia_hipodromo (
+  hipodromo_id SMALLINT UNSIGNED PRIMARY KEY,
+  ajuste       DECIMAL(6,3) NOT NULL,
+  pares        INT UNSIGNED NOT NULL           -- caballos que pasaron de ese hipódromo a otro o al revés
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
