@@ -53,8 +53,10 @@ final class ProgramaNoOficial
         $carreras = [];
         foreach ($programa['carreras'] as $c) {
             $sup = $c['superficie'] ?? Clasificador::superficie(null, $hip);
-            $c['distancia'] = $distancias[$c['numero']] ?? $this->distanciaPorRecord($hip, $c['record'], $fecha);
-            $c['distancia_origen'] = isset($distancias[$c['numero']]) ? 'indicada' : ($c['distancia'] ? 'récord' : null);
+            // Distancia: la indicada a mano; si la reunión ya se corrió, la del resultado; si no, la del récord.
+            $real = $this->distanciaCorrida($hip, $fecha, (int)$c['nro_oficial']);
+            $c['distancia'] = $distancias[$c['numero']] ?? $real ?? $this->distanciaPorRecord($hip, $c['record'], $fecha);
+            $c['distancia_origen'] = isset($distancias[$c['numero']]) ? 'indicada' : ($real ? 'resultado' : ($c['distancia'] ? 'récord' : null));
             $c['superficie'] = $sup;
             $c['con_luz'] = self::conLuz($fecha, $c['hora']);
             $c['hipodromo'] = $hip;
@@ -96,6 +98,16 @@ final class ProgramaNoOficial
             $carreras[] = $c;
         }
         return ['fecha' => $fecha, 'hipodromo' => $hip, 'nro_reunion' => $programa['nro_reunion'], 'carreras' => $carreras];
+    }
+
+    /** Distancia de la carrera si ya está en la base (programa de una reunión que ya se corrió). */
+    private function distanciaCorrida(int $hip, string $fecha, int $nro): ?int
+    {
+        $st = $this->db->prepare('SELECT c.distancia FROM carrera c JOIN reunion r ON r.id = c.reunion_id
+                                  WHERE r.hipodromo_id = ? AND r.fecha = ? AND c.nro_oficial = ?');
+        $st->execute([$hip, $fecha, $nro]);
+        $d = $st->fetchColumn();
+        return $d ? (int)$d : null;
     }
 
     /**
