@@ -153,7 +153,7 @@ final class ParserResultados
             'peso_caballo' => self::entero($f[self::COL_PESO_CABALLO] ?? null) ?: null,
             'retiro_motivo' => self::nulo($f[self::COL_RETIRO] ?? null),   // si lo retiraron de la carrera, y por qué
             'tratamiento' => self::nulo($f[self::COL_TRATAMIENTO] ?? null),  // tratamiento veterinario declarado
-            'marca' => self::nulo($f[self::COL_MARCA] ?? null),   // columna G: c, m, cm en reuniones viejas (significado sin confirmar)
+            'marca' => self::nulo($f[self::COL_MARCA] ?? null),   // columna G: c careta, m muserola, cm ambas
             'jockey' => self::nulo($f[self::COL_JOCKEY] ?? null),
             'peso_asignado' => self::num($f[self::COL_PESO_ASIG] ?? null),
             'peso_real' => self::num($f[self::COL_PESO_REAL] ?? null),

@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS actuacion (
   peso_caballo    SMALLINT UNSIGNED NULL,         -- kg; el Excel trae 0 cuando no hay dato
   retiro_motivo   VARCHAR(120) NULL,              -- columna E: retirado y motivo
   tratamiento     VARCHAR(20) NULL,               -- columna F: tratamiento veterinario (FF, FB, FS...)
-  marca           VARCHAR(10) NULL,               -- columna G: c, m, cm en reuniones viejas (sin confirmar qué es)
+  marca           VARCHAR(10) NULL,               -- columna G: c careta, m muserola, cm ambas (solo en reuniones viejas)
   jockey_id       INT UNSIGNED NULL,
   cuidador_id     INT UNSIGNED NULL,
   stud_id         INT UNSIGNED NULL,
