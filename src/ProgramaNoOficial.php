@@ -14,14 +14,21 @@ use PDO;
  * - índice categoría = vel. corregida − par de la categoría de esa carrera (cómo corrió frente a los 4 primeros normales de esa categoría).
  * - índice = vel. corregida − par general de esa distancia/superficie/hipódromo: sirve para comparar carreras de distinta
  *   distancia, hipódromo o categoría.
- * - proyección = (3 × promedio de índices + último + 2 × promedio en la distancia de hoy) / 6, como el programa viejo
- *   (sin carreras en la distancia: (2 × promedio + último) / 3).
+ * - historia = promedio de los índices de toda la campaña, ponderado por lo reciente: cada carrera pesa la mitad que la
+ *   que corrió 5 carreras después (MEDIA_VIDA). En la distancia de hoy, lo mismo pero solo con las carreras en esa distancia.
+ * - proyección = (3 × historia + último + 2 × historia en la distancia de hoy) / 6, como el programa viejo
+ *   (sin carreras en la distancia: (2 × historia + último) / 3). Con las carreras de 2024 a 2026 acierta al ganador
+ *   igual que con solo los últimos 6 (24 %) y ordena un poco mejor al resto del lote.
  * - vs par de hoy = proyección − (par de la categoría de hoy − par general de hoy): + significa que, por lo que viene
  *   corriendo, anda más rápido que los 4 primeros normales de la categoría de hoy.
  */
 final class ProgramaNoOficial
 {
     public const ANTECEDENTES = 6;
+    /** Cada cuántas carreras hacia atrás el índice pesa la mitad en la historia. */
+    public const MEDIA_VIDA = 5;
+    /** Diferencia de par (km/h) entre la categoría de antes y la de hoy para avisar que sube o baja de categoría. */
+    private const SALTO_CATEGORIA = 0.3;
     /** Puesta de sol aproximada por mes en Uruguay; la luz artificial se prende 20 minutos antes. */
     private const PUESTA_SOL = [1 => '20:02', 2 => '19:40', 3 => '19:04', 4 => '18:22', 5 => '17:51', 6 => '17:41',
         7 => '17:53', 8 => '18:15', 9 => '18:37', 10 => '19:00', 11 => '19:29', 12 => '19:56'];
@@ -164,7 +171,7 @@ final class ProgramaNoOficial
              LEFT JOIN persona cu ON cu.id = a.cuidador_id
              LEFT JOIN persona s ON s.id = a.stud_id
              WHERE ca.nombre = ? AND ca.pais = ? AND ca.anio_nac = ? AND r.fecha < ?
-             ORDER BY r.fecha DESC, c.numero DESC LIMIT " . (self::ANTECEDENTES * 3)
+             ORDER BY r.fecha DESC, c.numero DESC"
         );
         $st->execute([$nombre, $pais, $anioNac, $fecha]);
         $filas = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -267,14 +274,12 @@ final class ProgramaNoOficial
             $r['sube_distancia'] = true;
         }
 
-        $validos = array_values(array_filter(array_slice($ant, 0, self::ANTECEDENTES), fn ($a) => $a['indice'] !== null));
+        $validos = array_values(array_filter($ant, fn ($a) => $a['indice'] !== null));
         if ($validos) {
-            $idx = array_column($validos, 'indice');
-            $r['promedio'] = array_sum($idx) / count($idx);
+            $r['promedio'] = self::ponderado(array_column($validos, 'indice'));
             $r['ultimo'] = $validos[0]['indice'];
-            $enDist = array_column(array_filter($ant, fn ($a) => $a['indice'] !== null && (int)$a['distancia'] === (int)$c['distancia']
-                && $a['superficie'] === $c['superficie']), 'indice');
-            $r['en_distancia'] = $enDist ? array_sum($enDist) / count($enDist) : null;
+            $r['en_distancia'] = self::ponderado(array_column(array_filter($validos, fn ($a) => (int)$a['distancia'] === (int)$c['distancia']
+                && $a['superficie'] === $c['superficie']), 'indice'));
             $r['proyeccion'] = $r['en_distancia'] !== null
                 ? (3 * $r['promedio'] + $r['ultimo'] + 2 * $r['en_distancia']) / 6
                 : (2 * $r['promedio'] + $r['ultimo']) / 3;
@@ -299,8 +304,29 @@ final class ProgramaNoOficial
         if ($r['sube_distancia']) {
             $r['notas'][] = 'Nunca corrió tan largo';
         }
-        if ($u['nivel'] && $u['nivel'] !== $c['nivel']) {
+        // Sube o baja de categoría: el par de la categoría de su última carrera contra el de la de hoy, los dos medidos
+        // en el hipódromo, la distancia y la superficie de hoy (así no se confunde la categoría con el hipódromo).
+        $parAntes = $u['nivel'] && $c['par'] && $c['distancia'] && $u['nivel'] !== 'Cuarto de milla'
+            ? $this->vel->par($c['hipodromo'], $c['distancia'], $c['superficie'], $u['nivel'], $u['edad'], $u['sexo']) : null;
+        $salto = $parAntes ? $parAntes['velocidad'] - $c['par']['velocidad'] : 0;
+        if (abs($salto) >= self::SALTO_CATEGORIA) {
+            $r['notas'][] = ($salto > 0 ? 'Baja' : 'Sube') . " de categoría (viene de {$u['categoria']})";
+        } elseif ($u['nivel'] && $u['nivel'] !== $c['nivel']) {
             $r['notas'][] = "Viene de {$u['nivel']}";
+        }
+        if ($r['cambio_jockey']) {
+            $juntos = array_filter($ant, fn ($a) => $a['jockey'] && self::claveJockey($a['jockey']) === self::claveJockey($h['jockey']));
+            if ($juntos) {
+                $p = array_count_values(array_map(fn ($a) => (int)$a['puesto'], $juntos));
+                $podio = [];
+                foreach ([1 => ['ganada', 'ganadas'], 2 => ['segundo', 'segundos'], 3 => ['tercero', 'terceros']] as $puesto => $txt) {
+                    if ($n = $p[$puesto] ?? 0) {
+                        $podio[] = $n . ' ' . $txt[$n > 1 ? 1 : 0];
+                    }
+                }
+                $r['notas'][] = sprintf('Vuelve con %s (%d %s juntos%s)', $h['jockey'], count($juntos), count($juntos) > 1 ? 'carreras' : 'carrera',
+                    $podio ? ': ' . implode(', ', $podio) : '');
+            }
         }
         if ($h['peso'] && $u['peso_real'] && (float)$h['peso'] - (float)$u['peso_real'] >= 2) {
             $r['notas'][] = sprintf('Sube %s kg', self::num((float)$h['peso'] - (float)$u['peso_real'], 1));
@@ -309,6 +335,18 @@ final class ProgramaNoOficial
             $r['notas'][] = sprintf('%s kg menos que el más cargado', self::num($pesoTop - (float)$h['peso'], 1));
         }
         return $r;
+    }
+
+    /** Promedio ponderado por lo reciente (el primero es el más reciente): el peso se divide por 2 cada MEDIA_VIDA carreras. */
+    private static function ponderado(array $valores): ?float
+    {
+        $suma = $pesos = 0.0;
+        foreach (array_values($valores) as $k => $v) {
+            $w = 0.5 ** ($k / self::MEDIA_VIDA);
+            $suma += $w * $v;
+            $pesos += $w;
+        }
+        return $pesos ? $suma / $pesos : null;
     }
 
     // ---------------------------------------------------------------- HTML
@@ -350,7 +388,7 @@ final class ProgramaNoOficial
         $o .= '<header><h1>' . $e($titulo) . '</h1><p>Reunión Nº ' . $e($p['nro_reunion']) . '. Velocidades en km/h. '
             . '<b>Par</b>: promedio de los 4 primeros en pista seca y sin viento para esa distancia, superficie y categoría. '
             . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal). '
-            . '<b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
+            . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
         }
@@ -426,7 +464,7 @@ final class ProgramaNoOficial
         // Resumen ordenado por "vs par de hoy".
         $orden = $c['caballos'];
         usort($orden, fn ($a, $b) => [$a['retirado'], $b['vs_par_hoy'] ?? $b['proyeccion'] ?? -99] <=> [$b['retirado'], $a['vs_par_hoy'] ?? $a['proyeccion'] ?? -99]);
-        $o .= '<table class="resumen"><thead><tr><th>Nº</th><th>Caballo</th><th>Kg</th><th>Gat.</th><th>Prom. índice</th><th>Último</th>'
+        $o .= '<table class="resumen"><thead><tr><th>Nº</th><th>Caballo</th><th>Kg</th><th>Gat.</th><th title="Índices de toda la campaña, pesando más las últimas carreras">Historia</th><th>Último</th>'
             . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . self::mandil($h['numero']) . '</td><td>' . $e($h['nombre']) . '</td><td>' . self::num($h['peso'], 1)
