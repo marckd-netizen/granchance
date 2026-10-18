@@ -47,6 +47,7 @@ final class ProgramaNoOficial
             $c['distancia_origen'] = isset($distancias[$c['numero']]) ? 'indicada' : ($c['distancia'] ? 'récord' : null);
             $c['superficie'] = $sup;
             $c['con_luz'] = self::conLuz($fecha, $c['hora']);
+            $c['hipodromo'] = $hip;
             $corren = array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']);
             $c['nivel'] = Clasificador::nivel($c['premio'], $c['condicion']);
             $c['edad'] = Clasificador::edad(array_column($corren, 'edad'));
@@ -59,7 +60,7 @@ final class ProgramaNoOficial
             foreach ($c['caballos'] as &$h) {
                 $h['anio_nac'] = Clasificador::anioNac($h['edad'], $fecha);
                 $h['antecedentes'] = $this->antecedentes($h['nombre'], $h['pais'], $h['anio_nac'], $fecha);
-                $h['corrio_con_luz'] = $c['con_luz'] && $h['antecedentes'] ? $this->corrioConLuz($h['nombre'], $h['pais'], $h['anio_nac'], $fecha) : null;
+                $h['campania'] = $h['antecedentes'] ? $this->campania($h['nombre'], $h['pais'], $h['anio_nac'], $fecha) : null;
                 $h += $this->resumen($h, $c, $fecha, $nivelHoy, $pesoTop);
             }
             unset($h);
@@ -203,21 +204,26 @@ final class ProgramaNoOficial
         return (int)$m[1] * 60 + (int)$m[2] >= $ph * 60 + $pm - self::LUZ_ANTES_MIN;
     }
 
-    /** Si el caballo ya corrió alguna vez con luz artificial (en toda su campaña, no solo los últimos antecedentes). */
-    private function corrioConLuz(string $nombre, string $pais, int $anioNac, string $fecha): bool
+    /**
+     * Resumen de toda la campaña del caballo (no solo los últimos antecedentes): si ya corrió con luz artificial,
+     * en qué hipódromos y en qué superficies.
+     * @return array{con_luz:bool, hipodromos:array<int,true>, superficies:array<string,true>}
+     */
+    private function campania(string $nombre, string $pais, int $anioNac, string $fecha): array
     {
         $st = $this->db->prepare(
-            "SELECT r.fecha, TIME_FORMAT(c.hora, '%H:%i') AS hora FROM caballo ca JOIN actuacion a ON a.caballo_id = ca.id
+            "SELECT r.fecha, r.hipodromo_id, c.superficie, TIME_FORMAT(c.hora, '%H:%i') AS hora FROM caballo ca JOIN actuacion a ON a.caballo_id = ca.id
              JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id
              WHERE ca.nombre = ? AND ca.pais = ? AND ca.anio_nac = ? AND r.fecha < ?"
         );
         $st->execute([$nombre, $pais, $anioNac, $fecha]);
+        $res = ['con_luz' => false, 'hipodromos' => [], 'superficies' => []];
         foreach ($st as $r) {
-            if (self::conLuz($r['fecha'], $r['hora'])) {
-                return true;
-            }
+            $res['con_luz'] = $res['con_luz'] || self::conLuz($r['fecha'], $r['hora']);
+            $res['hipodromos'][(int)$r['hipodromo_id']] = true;
+            $res['superficies'][Clasificador::superficie($r['superficie'], (int)$r['hipodromo_id'])] = true;
         }
-        return false;
+        return $res;
     }
 
     private function resumen(array $h, array $c, string $fecha, ?float $nivelHoy, float $pesoTop): array
@@ -255,7 +261,14 @@ final class ProgramaNoOficial
             }
         }
 
-        if ($c['con_luz'] && $h['corrio_con_luz'] === false) {
+        $camp = $h['campania'];
+        if (!isset($camp['hipodromos'][$c['hipodromo']])) {
+            $r['notas'][] = 'Debutante en ' . self::nombreHipodromo($c['hipodromo']);
+        }
+        if ($c['superficie'] !== '?' && !isset($camp['superficies'][$c['superficie']])) {
+            $r['notas'][] = 'Debutante en ' . $c['superficie'];
+        }
+        if ($c['con_luz'] && !$camp['con_luz']) {
             $r['notas'][] = 'Primera vez con luz artificial';
         }
         if ($r['dias'] > 45) {
@@ -266,9 +279,6 @@ final class ProgramaNoOficial
         }
         if ($u['nivel'] && $u['nivel'] !== $c['nivel']) {
             $r['notas'][] = "Viene de {$u['nivel']}";
-        }
-        if ($c['superficie'] === 'césped' && !array_filter($ant, fn ($a) => $a['superficie'] === 'césped')) {
-            $r['notas'][] = 'Debuta en césped';
         }
         if ($h['peso'] && $u['peso_real'] && (float)$h['peso'] - (float)$u['peso_real'] >= 2) {
             $r['notas'][] = sprintf('Sube %s kg', self::num((float)$h['peso'] - (float)$u['peso_real'], 1));
