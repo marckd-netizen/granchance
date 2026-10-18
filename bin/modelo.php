@@ -17,6 +17,7 @@ $r = $m->entrenar('2019-01-01', isset($opc['probar']) ? (string)$opc['probar'] :
 registro("Modelo entrenado con {$r['carreras']} carreras");
 registro(sprintf('Desde %s (%d carreras): el de más probabilidad ganó el %.1f %%; ordenando solo por proyección, el %.1f %% (escala %.2f)',
     $r['prueba'], $r['carreras_prueba'], 100 * $r['acierto'], 100 * $r['acierto_proyeccion'], $r['escala']));
+registro(sprintf('Trifecta sin orden con los 3 de más probabilidad: %.1f %% de las carreras', 100 * $r['trifecta']));
 foreach ($r['calibracion'] ?? [] as $c) {
     printf("  dada %4.1f %% → ganaron %4.1f %% (%d caballos)\n", 100 * $c['dada'], 100 * $c['real'], $c['caballos']);
 }

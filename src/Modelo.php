@@ -281,7 +281,7 @@ final class Modelo
     {
         $this->est = [];
         $hist = [];
-        $X = $y = $grupo = $fechas = [];
+        $X = $y = $grupo = $fechas = $puesto = [];
         $this->db->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
         $st = $this->db->query(
             'SELECT a.carrera_id, a.caballo_id, r.fecha, r.hipodromo_id, c.distancia, c.superficie, c.pista, c.viento,
@@ -296,7 +296,7 @@ final class Modelo
         );
         $carrera = [];
         $puestos = [];   // carrera => caballo => puesto, para los enfrentamientos
-        $procesar = function (array $carrera) use (&$hist, &$X, &$y, &$grupo, &$fechas, &$puestos, $desde) {
+        $procesar = function (array $carrera) use (&$hist, &$X, &$y, &$grupo, &$fechas, &$puesto, &$puestos, $desde) {
             $f0 = $carrera[0];
             $t = self::dia($f0['fecha']);
             $llegaron = array_values(array_filter($carrera, fn ($f) => $f['puesto'] !== null));
@@ -320,6 +320,7 @@ final class Modelo
                         'gatera' => (int)$f['gatera'], 'corredores' => count($llegaron), 'jockey' => $f['jockey'], 'cuidador' => $f['cuidador'],
                         'frente' => self::frente($enf, $f['fecha'])] + $f));
                     $y[] = $f['puesto'] === 1 ? 1 : 0;
+                    $puesto[] = $f['puesto'];
                     $grupo[] = (int)$f0['carrera_id'];
                     $fechas[] = $f0['fecha'];
                 }
@@ -354,7 +355,7 @@ final class Modelo
         $pru = array_keys(array_filter($fechas, fn ($f) => $f >= $prueba));
         $this->ajustar($X, $y, $grupo, $ent);
         $this->calibrar($X, $y, $grupo, $pru);
-        $res += $this->medir($X, $y, $grupo, $pru) + ['escala' => $this->escala];
+        $res += $this->medir($X, $y, $puesto, $grupo, $pru) + ['escala' => $this->escala];
         $this->ajustar($X, $y, $grupo, array_keys($y));
         $this->guardar();
         return $res;
@@ -509,18 +510,25 @@ final class Modelo
         $this->escala = $mejor[1];
     }
 
-    /** Acierto (el de más probabilidad gana) del modelo y de la proyección sola, en las filas dadas. */
-    private function medir(array $X, array $y, array $grupo, array $filas): array
+    /**
+     * Acierto (el de más probabilidad gana) del modelo y de la proyección sola, en las filas dadas, y trifecta sin orden:
+     * si los 3 de más probabilidad son los 3 primeros (por carrera).
+     */
+    private function medir(array $X, array $y, array $puesto, array $grupo, array $filas): array
     {
         $porCarrera = [];
         foreach ($filas as $i) {
             $porCarrera[$grupo[$i]][] = $i;
         }
         $ok = $okProy = 0;
+        $trifectas = [];
         $tramos = [];   // calibración: probabilidad dada (de a 10 %) => [suma de probabilidades, ganadores, caballos]
         foreach ($porCarrera as $is) {
             $mejor = $mejorProy = null;
             $prob = $this->probabilidades(array_combine($is, array_map(fn ($i) => array_combine(self::VARIABLES, $X[$i]), $is)));
+            arsort($prob);
+            $tres = array_slice(array_keys($prob), 0, 3);
+            $trifectas[$grupo[$is[0]]] = count(array_filter($tres, fn ($i) => $puesto[$i] <= 3)) === 3;
             foreach ($prob as $i => $p) {
                 $k = min(6, intdiv((int)($p * 100), 10));
                 $tramos[$k] = [($tramos[$k][0] ?? 0) + $p, ($tramos[$k][1] ?? 0) + $y[$i], ($tramos[$k][2] ?? 0) + 1];
@@ -541,6 +549,7 @@ final class Modelo
         $n = count($porCarrera);
         ksort($tramos);
         return ['carreras_prueba' => $n, 'acierto' => $n ? $ok / $n : 0.0, 'acierto_proyeccion' => $n ? $okProy / $n : 0.0,
+            'trifecta' => $n ? array_sum($trifectas) / $n : 0.0, 'trifectas' => $trifectas,
             'calibracion' => array_map(fn ($t) => ['dada' => $t[0] / $t[2], 'real' => $t[1] / $t[2], 'caballos' => $t[2]], $tramos)];
     }
 
