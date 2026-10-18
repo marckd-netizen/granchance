@@ -58,11 +58,20 @@ final class ProgramaNoOficial
             }
             unset($h);
             $nombres = array_map(fn ($h) => self::clave($h['nombre']), $c['caballos']);
+            // Carreras pasadas en las que corrieron juntos dos o más caballos de hoy: carrera => números de mandil.
+            $juntos = [];
+            foreach ($c['caballos'] as $h) {
+                foreach ($h['antecedentes'] as $a) {
+                    $juntos[(int)$a['carrera_id']][$h['numero']] = $h['nombre'];
+                }
+            }
             foreach ($c['caballos'] as &$h) {
                 foreach ($h['antecedentes'] as &$a) {
                     // En negrita los rivales de hoy que le ganaron o lo escoltaron.
                     $a['primero_rival'] = $a['primero'] && self::clave($a['primero']) !== self::clave($h['nombre']) && in_array(self::clave($a['primero']), $nombres, true);
                     $a['segundo_rival'] = $a['segundo'] && self::clave($a['segundo']) !== self::clave($h['nombre']) && in_array(self::clave($a['segundo']), $nombres, true);
+                    $otros = array_diff_key($juntos[(int)$a['carrera_id']] ?? [], [$h['numero'] => 1]);
+                    $a['con_rivales'] = $otros;
                 }
                 unset($a);
             }
@@ -244,7 +253,7 @@ final class ProgramaNoOficial
             . '<title>' . $e($titulo) . '</title><style>' . self::CSS . '</style></head><body>';
         $o .= '<header><h1>' . $e($titulo) . '</h1><p>Reunión Nº ' . $e($p['nro_reunion']) . '. Velocidades en km/h. '
             . '<b>Par</b>: promedio de los 4 primeros en pista seca y sin viento para esa distancia, superficie y categoría. '
-            . '<b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal). '
+            . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal). '
             . '<b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
@@ -306,7 +315,13 @@ final class ProgramaNoOficial
             . '<th>Categoría</th><th>Jockey</th><th>Kg</th><th>Gat.</th><th>Div.</th><th>Peso cab.</th><th>Trat.</th><th>Marca</th></tr></thead><tbody>';
         foreach (array_slice($h['antecedentes'], 0, self::ANTECEDENTES) as $a) {
             $nom = fn (?string $n, bool $rival) => $rival ? '<b>' . $e($n) . '</b>' : $e($n);
-            $o .= '<tr><td>' . date('d/m/y', strtotime($a['fecha'])) . '</td><td>' . $e(self::siglaHipodromo((int)$a['hipodromo_id'])) . '</td><td>'
+            $fecha = date('d/m/y', strtotime($a['fecha']));
+            if ($a['con_rivales']) {
+                // Fecha en negrita si en esa carrera corrieron otros caballos de hoy; al pasar el mouse dice cuáles.
+                $quienes = implode(', ', array_map(fn ($n, $nom) => "($n) $nom", array_keys($a['con_rivales']), $a['con_rivales']));
+                $fecha = '<b title="' . $e('Corrieron también: ' . $quienes) . '">' . $fecha . '</b> <small>con ' . $e(implode(', ', array_keys($a['con_rivales']))) . '</small>';
+            }
+            $o .= '<tr><td>' . $fecha . '</td><td>' . $e(self::siglaHipodromo((int)$a['hipodromo_id'])) . '</td><td>'
                 . $e($a['puesto'] ?? $a['puesto_texto']) . '/' . $a['corredores'] . '</td><td>' . $nom($a['primero'], $a['primero_rival']) . '</td><td>' . $nom($a['segundo'], $a['segundo_rival'])
                 . '</td><td>' . $e($a['dist_acumulada']) . '</td><td>' . $e($a['distancia']) . '</td><td>' . $e(mb_substr($a['superficie'], 0, 1)) . '</td><td>' . $e($a['pista'])
                 . '</td><td>' . $e($a['viento']) . '</td><td>' . $e($a['tiempo_ganador']) . '</td><td>' . $e($a['tiempo']) . '</td><td>' . self::num($a['velocidad'])
