@@ -10,7 +10,7 @@ use PDO;
  * velocidad, la campaña del caballo y cómo vienen ganando su jockey y su cuidador, con cualquier caballo.
  *
  * Probado entrenando con 2019-2023 y midiendo en las carreras de 2024-2026 (que el modelo no vio), el caballo con más
- * probabilidad ganó el 29,6 % de las veces, contra 27,7 % ordenando solo por la proyección (el favorito de las apuestas
+ * probabilidad ganó el 30,1 % de las veces, contra 27,7 % ordenando solo por la proyección (el favorito de las apuestas
  * gana el 35 %). Los parciales (tiempos del puntero) no mejoraron nada y no se usan.
  *
  * Jockeys y cuidadores: % de carreras ganadas y % en el marcador (1º a 3º), en general y en ese hipódromo y tramo de
@@ -20,7 +20,7 @@ final class Modelo
 {
     public const VARIABLES = ['proyeccion', 'mejor_anio', 'debutante', 'carreras', 'pct_ganadas', 'pct_place', 'dias', 'dias2',
         'ultimo_puesto', 'gano_ultima', 'cambio_categoria', 'kg_menos', 'gatera', 'mismo_jockey', 'mismo_cuidador',
-        'jockey_gana', 'cuidador_gana', 'jockey_gana_tramo', 'cuidador_gana_tramo', 'jockey_place', 'cuidador_place'];
+        'jockey_gana', 'cuidador_gana', 'jockey_gana_tramo', 'cuidador_gana_tramo', 'jockey_place', 'cuidador_place', 'frente_rivales'];
     public const MEDIA_VIDA = 5;            // carreras: cada 5 carreras hacia atrás el índice pesa la mitad
     private const MEDIA_VIDA_DIAS = 180;
     private const SIN_DATO = -1.5;          // proyección de un debutante
@@ -28,6 +28,8 @@ final class Modelo
 
     /** @var array<string, array{0:float,1:float,2:float}> variable => [media, desvío, coeficiente] */
     private array $coef = [];
+    /** Los puntajes se dividen por esta escala para que las probabilidades no salgan exageradas (ver calibrar()). */
+    private float $escala = 1.0;
     /** @var array<string, array{0:float,1:float,2:float,3:int}> persona => [ganadas, placé, corridas, día] con decaimiento */
     private array $est = [];
 
@@ -105,6 +107,7 @@ final class Modelo
             'gatera' => ($hoy['gatera'] ?: 6) / max(1, $hoy['corredores']),
             'mismo_jockey' => $u && $u['jockey'] === $hoy['jockey'] ? 1.0 : 0.0,
             'mismo_cuidador' => $u && $u['cuidador'] === $hoy['cuidador'] ? 1.0 : 0.0,
+            'frente_rivales' => $hoy['frente'] ?? 0.0,
             'jockey_gana' => $this->tasa('j|' . $hoy['jockey'], $t, 0),
             'cuidador_gana' => $this->tasa('c|' . $hoy['cuidador'], $t, 0),
             'jockey_gana_tramo' => $this->tasa("j|{$hoy['jockey']}|{$hoy['hipodromo']}|$tramo", $t, 0),
@@ -112,6 +115,22 @@ final class Modelo
             'jockey_place' => $this->tasa('j|' . $hoy['jockey'], $t, 1),
             'cuidador_place' => $this->tasa('c|' . $hoy['cuidador'], $t, 1),
         ];
+    }
+
+    /**
+     * Cómo le fue contra los rivales de hoy en las carreras que corrieron juntos: (le ganó − le ganaron) / (veces + 1),
+     * pesando cada enfrentamiento la mitad por año. Entre −1 y 1; 0 si nunca se cruzaron.
+     * @param list<array{fecha:string, gano:bool}> $enfrentamientos
+     */
+    public static function frente(array $enfrentamientos, string $fecha): float
+    {
+        $t = self::dia($fecha);
+        $g = $p = 0.0;
+        foreach ($enfrentamientos as $e) {
+            $w = 0.5 ** (($t - self::dia($e['fecha'])) / 365);
+            $e['gano'] ? $g += $w : $p += $w;
+        }
+        return ($g - $p) / ($g + $p + 1);
     }
 
     // ---------------------------------------------------------------- jockeys y cuidadores
@@ -167,6 +186,8 @@ final class Modelo
         foreach ($this->db->query('SELECT variable, media, desvio, coeficiente FROM modelo_coef', PDO::FETCH_ASSOC) as $r) {
             $this->coef[$r['variable']] = [(float)$r['media'], (float)$r['desvio'], (float)$r['coeficiente']];
         }
+        $this->escala = (float)($this->coef['_escala'][2] ?? 1.0);
+        unset($this->coef['_escala']);
         return (bool)$this->coef;
     }
 
@@ -193,7 +214,7 @@ final class Modelo
         foreach ($this->coef as $v => [$m, $d, $b]) {
             $s += $b * (($x[$v] ?? $m) - $m) / $d;
         }
-        return $s;
+        return $s / $this->escala;
     }
 
     // ---------------------------------------------------------------- entrenamiento
@@ -220,27 +241,40 @@ final class Modelo
             PDO::FETCH_ASSOC
         );
         $carrera = [];
-        $procesar = function (array $carrera) use (&$hist, &$X, &$y, &$grupo, &$fechas, $desde) {
+        $puestos = [];   // carrera => caballo => puesto, para los enfrentamientos
+        $procesar = function (array $carrera) use (&$hist, &$X, &$y, &$grupo, &$fechas, &$puestos, $desde) {
             $f0 = $carrera[0];
             $t = self::dia($f0['fecha']);
             $llegaron = array_values(array_filter($carrera, fn ($f) => $f['puesto'] !== null));
             $ganadores = count(array_filter($llegaron, fn ($f) => $f['puesto'] === 1));
             if ($f0['fecha'] >= $desde && count($llegaron) >= self::MIN_CORREDORES && $ganadores === 1) {
                 $pesoMax = max(array_map(fn ($f) => (float)$f['peso_real'], $llegaron));
+                $hoy = array_column($llegaron, 'puesto', 'caballo_id');
                 foreach ($llegaron as $f) {
+                    $enf = [];
+                    foreach ($hist[$f['caballo_id']] ?? [] as $a) {
+                        $mio = $puestos[$a['carrera']][$f['caballo_id']] ?? null;
+                        foreach ($mio !== null ? array_intersect_key($puestos[$a['carrera']], $hoy) : [] as $otro => $suyo) {
+                            if ($otro !== $f['caballo_id'] && $suyo !== null && $suyo !== $mio) {
+                                $enf[] = ['fecha' => $a['fecha'], 'gano' => $mio < $suyo];
+                            }
+                        }
+                    }
                     $X[] = array_values($this->rasgos($hist[$f['caballo_id']] ?? [], [
                         'fecha' => $f['fecha'], 'hipodromo' => $f['hip'], 'distancia' => $f['dist'], 'superficie' => $f['sup'],
                         'nivel_par' => $f['nivel_par'], 'peso' => (float)$f['peso_real'], 'peso_max' => $pesoMax,
-                        'gatera' => (int)$f['gatera'], 'corredores' => count($llegaron), 'jockey' => $f['jockey'], 'cuidador' => $f['cuidador']]));
+                        'gatera' => (int)$f['gatera'], 'corredores' => count($llegaron), 'jockey' => $f['jockey'], 'cuidador' => $f['cuidador'],
+                        'frente' => self::frente($enf, $f['fecha'])]));
                     $y[] = $f['puesto'] === 1 ? 1 : 0;
                     $grupo[] = (int)$f0['carrera_id'];
                     $fechas[] = $f0['fecha'];
                 }
             }
+            $puestos[$f0['carrera_id']] = array_column($carrera, 'puesto', 'caballo_id');
             foreach ($carrera as $f) {
                 $this->sumar($f['jockey'], $f['cuidador'], $f['hip'], $f['dist'], $t, $f['puesto']);
                 $hist[$f['caballo_id']] ??= [];
-                array_unshift($hist[$f['caballo_id']], ['fecha' => $f['fecha'], 'indice' => $f['indice'], 'distancia' => $f['dist'],
+                array_unshift($hist[$f['caballo_id']], ['carrera' => $f0['carrera_id'], 'fecha' => $f['fecha'], 'indice' => $f['indice'], 'distancia' => $f['dist'],
                     'superficie' => $f['sup'], 'puesto' => $f['puesto'], 'nivel_par' => $f['nivel_par'], 'jockey' => $f['jockey'], 'cuidador' => $f['cuidador']]);
             }
         };
@@ -256,13 +290,15 @@ final class Modelo
         }
         $this->db->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
 
-        $res = ['carreras' => count(array_unique($grupo))];
-        if ($prueba !== null) {
-            $ent = array_keys(array_filter($fechas, fn ($f) => $f < $prueba));
-            $pru = array_keys(array_filter($fechas, fn ($f) => $f >= $prueba));
-            $this->ajustar($X, $y, $grupo, $ent);
-            $res += $this->medir($X, $y, $grupo, $pru);
-        }
+        // Se entrena hasta $prueba (por defecto, dos años antes de la última carrera), se mide y se calibra la escala con
+        // lo que viene después, y al final se vuelve a entrenar con todo conservando esa escala.
+        $prueba ??= date('Y-m-d', strtotime(max($fechas) . ' -2 years'));
+        $res = ['carreras' => count(array_unique($grupo)), 'prueba' => $prueba];
+        $ent = array_keys(array_filter($fechas, fn ($f) => $f < $prueba));
+        $pru = array_keys(array_filter($fechas, fn ($f) => $f >= $prueba));
+        $this->ajustar($X, $y, $grupo, $ent);
+        $this->calibrar($X, $y, $grupo, $pru);
+        $res += $this->medir($X, $y, $grupo, $pru) + ['escala' => $this->escala];
         $this->ajustar($X, $y, $grupo, array_keys($y));
         $this->guardar();
         return $res;
@@ -372,6 +408,44 @@ final class Modelo
         }
     }
 
+    /**
+     * El modelo sale demasiado seguro con los favoritos claros (daba 54 % a caballos que ganaban el 43 %): se busca la
+     * escala que mejor predice las carreras de prueba (máxima verosimilitud) y se dividen los puntajes por ella.
+     */
+    private function calibrar(array $X, array $y, array $grupo, array $filas): void
+    {
+        $porCarrera = [];
+        foreach ($filas as $i) {
+            $porCarrera[$grupo[$i]][] = $i;
+        }
+        $this->escala = 1.0;
+        $puntajes = [];
+        foreach ($porCarrera as $c => $is) {
+            foreach ($is as $i) {
+                $puntajes[$c][$i] = $this->puntaje(array_combine(self::VARIABLES, $X[$i]));
+            }
+        }
+        $mejor = [-INF, 1.0];
+        for ($e = 0.8; $e <= 2.0; $e += 0.05) {
+            $ll = 0.0;
+            foreach ($puntajes as $ps) {
+                $max = max($ps) / $e;
+                $z = 0.0;
+                foreach ($ps as $i => $p) {
+                    $z += exp($p / $e - $max);
+                    if ($y[$i]) {
+                        $gan = $p / $e;
+                    }
+                }
+                $ll += $gan - $max - log($z);
+            }
+            if ($ll > $mejor[0]) {
+                $mejor = [$ll, $e];
+            }
+        }
+        $this->escala = $mejor[1];
+    }
+
     /** Acierto (el de más probabilidad gana) del modelo y de la proyección sola, en las filas dadas. */
     private function medir(array $X, array $y, array $grupo, array $filas): array
     {
@@ -380,8 +454,14 @@ final class Modelo
             $porCarrera[$grupo[$i]][] = $i;
         }
         $ok = $okProy = 0;
+        $tramos = [];   // calibración: probabilidad dada (de a 10 %) => [suma de probabilidades, ganadores, caballos]
         foreach ($porCarrera as $is) {
             $mejor = $mejorProy = null;
+            $prob = $this->probabilidades(array_combine($is, array_map(fn ($i) => array_combine(self::VARIABLES, $X[$i]), $is)));
+            foreach ($prob as $i => $p) {
+                $k = min(6, intdiv((int)($p * 100), 10));
+                $tramos[$k] = [($tramos[$k][0] ?? 0) + $p, ($tramos[$k][1] ?? 0) + $y[$i], ($tramos[$k][2] ?? 0) + 1];
+            }
             foreach ($is as $i) {
                 $x = array_combine(self::VARIABLES, $X[$i]);
                 $s = $this->puntaje($x);
@@ -396,7 +476,9 @@ final class Modelo
             $okProy += $y[$mejorProy[1]];
         }
         $n = count($porCarrera);
-        return ['carreras_prueba' => $n, 'acierto' => $n ? $ok / $n : 0.0, 'acierto_proyeccion' => $n ? $okProy / $n : 0.0];
+        ksort($tramos);
+        return ['carreras_prueba' => $n, 'acierto' => $n ? $ok / $n : 0.0, 'acierto_proyeccion' => $n ? $okProy / $n : 0.0,
+            'calibracion' => array_map(fn ($t) => ['dada' => $t[0] / $t[2], 'real' => $t[1] / $t[2], 'caballos' => $t[2]], $tramos)];
     }
 
     private function guardar(): void
@@ -406,6 +488,7 @@ final class Modelo
         foreach ($this->coef as $v => [$m, $d, $b]) {
             $st->execute([$v, $m, $d, $b]);
         }
+        $st->execute(['_escala', 0, 1, $this->escala]);
     }
 
     /** @return array<string, float> variable => coeficiente (estandarizado), para mostrar */

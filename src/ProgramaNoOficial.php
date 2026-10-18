@@ -83,15 +83,17 @@ final class ProgramaNoOficial
                 $h += $this->resumen($h, $c, $fecha, $nivelHoy, $pesoTop);
             }
             unset($h);
-            $this->probabilidades($c, $fecha, $nivelHoy, $pesoTop);
-            $nombres = array_map(fn ($h) => Personas::clave($h['nombre']), $c['caballos']);
             // Carreras pasadas en las que corrieron juntos dos o más caballos de hoy: carrera => números de mandil.
-            $juntos = [];
+            $juntos = $puestos = [];
             foreach ($c['caballos'] as $h) {
                 foreach ($h['antecedentes'] as $a) {
                     $juntos[(int)$a['carrera_id']][$h['numero']] = $h['nombre'];
+                    $puestos[(int)$a['carrera_id']][$h['numero']] = $a['puesto'] !== null ? (int)$a['puesto'] : null;
                 }
             }
+            $this->frente($c, $puestos, $fecha);
+            $this->probabilidades($c, $fecha, $nivelHoy, $pesoTop);
+            $nombres = array_map(fn ($h) => Personas::clave($h['nombre']), $c['caballos']);
             foreach ($c['caballos'] as &$h) {
                 foreach ($h['antecedentes'] as &$a) {
                     // En negrita los rivales de hoy que le ganaron o lo escoltaron.
@@ -108,6 +110,39 @@ final class ProgramaNoOficial
         return ['fecha' => $fecha, 'hipodromo' => $hip, 'nro_reunion' => $programa['nro_reunion'], 'carreras' => $carreras];
     }
 
+    /**
+     * Cómo le fue contra los rivales de hoy cuando corrieron juntos: $h['frente'] (número => [ganó, perdió]),
+     * $h['frente_indice'] para el modelo y una nota "Frente a rivales de hoy: Mohamed 1-0".
+     */
+    private function frente(array &$c, array $puestos, string $fecha): void
+    {
+        $corren = array_flip(array_map('strval', array_column(array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']), 'numero')));
+        $nombre = array_column($c['caballos'], 'nombre', 'numero');
+        foreach ($c['caballos'] as &$h) {
+            $h['frente'] = [];
+            $carreras = [];
+            foreach ($h['antecedentes'] as $a) {
+                $mio = $puestos[(int)$a['carrera_id']][$h['numero']] ?? null;
+                if ($mio === null) {
+                    continue;
+                }
+                foreach ($puestos[(int)$a['carrera_id']] as $num => $suyo) {
+                    if ((string)$num === (string)$h['numero'] || $suyo === null || $suyo === $mio || !isset($corren[(string)$num])) {
+                        continue;
+                    }
+                    $h['frente'][$num][$mio < $suyo ? 0 : 1] = ($h['frente'][$num][$mio < $suyo ? 0 : 1] ?? 0) + 1;
+                    $carreras[] = ['fecha' => $a['fecha'], 'gano' => $mio < $suyo];
+                }
+            }
+            $h['frente_indice'] = Modelo::frente($carreras, $fecha);
+            if ($h['frente'] && !$h['retirado']) {
+                $h['notas'][] = 'Frente a rivales de hoy: ' . implode(', ', array_map(fn ($num, $r) => sprintf('%s %d-%d', $nombre[$num], $r[0] ?? 0, $r[1] ?? 0),
+                    array_keys($h['frente']), $h['frente']));
+            }
+        }
+        unset($h);
+    }
+
     /** Probabilidad de ganar de cada caballo que corre (Modelo), en $h['prob']. */
     private function probabilidades(array &$c, string $fecha, ?float $nivelHoy, float $pesoTop): void
     {
@@ -120,7 +155,7 @@ final class ProgramaNoOficial
             $rasgos[$i] = $this->modelo->rasgos($ant, ['fecha' => $fecha, 'hipodromo' => $c['hipodromo'], 'distancia' => $c['distancia'],
                 'superficie' => $c['superficie'], 'nivel_par' => $nivelHoy, 'peso' => (float)$h['peso'], 'peso_max' => $pesoTop,
                 'gatera' => (int)$h['gatera'], 'corredores' => count($corren), 'jockey' => Personas::jockey($h['jockey']),
-                'cuidador' => Personas::cuidador($h['cuidador'])]);
+                'cuidador' => Personas::cuidador($h['cuidador']), 'frente' => $h['frente_indice']]);
         }
         $prob = $this->modelo?->probabilidades($rasgos) ?? [];
         foreach ($c['caballos'] as $i => &$h) {
