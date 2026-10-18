@@ -68,6 +68,12 @@ final class ProgramaNoOficial
             $c['con_luz'] = self::conLuz($fecha, $c['hora']);
             $c['hipodromo'] = $hip;
             $corren = array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']);
+            // En Maroñas, en arena, los 1000 m con 11 o más caballos se corren en 1100 (el récord del programa es el de 1000).
+            $c['nota_distancia'] = null;
+            if ($c['distancia_origen'] === 'récord' && $hip === 1 && $sup === 'arena' && $c['distancia'] === 1000 && count($corren) >= 11) {
+                $c['distancia'] = 1100;
+                $c['nota_distancia'] = 'figura en 1000; con 11 o más se corre en 1100';
+            }
             $c['nivel'] = Clasificador::nivel($c['premio'], $c['condicion']);
             $c['edad'] = Clasificador::edad(array_column($corren, 'edad'));
             $c['sexo'] = Clasificador::sexo(array_column($corren, 'sexo'));
@@ -504,7 +510,7 @@ final class ProgramaNoOficial
 
     private function htmlCarrera(array $c, \Closure $e): string
     {
-        $dist = $c['distancia'] ? $c['distancia'] . ' m' : 'distancia sin dato';
+        $dist = $c['distancia'] ? $c['distancia'] . ' m' . ($c['nota_distancia'] ? ' (' . $c['nota_distancia'] . ')' : '') : 'distancia sin dato';
         $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'ª carrera · ' . $e($c['hora']) . ' · ' . $dist . ' en ' . $e($c['superficie'])
             . ($c['con_luz'] ? ' · con luz artificial' : '') . ' <small>Nro. ' . $e($c['nro_oficial']) . '</small></h2>';
         $o .= '<p class="premio"><b>' . $e($c['premio']) . '</b>. ' . $e($c['condicion']) . '</p>';
