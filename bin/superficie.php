@@ -37,6 +37,12 @@ foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
     $total += $n;
     registro("{$r['fecha']} hip {$r['hipodromo_id']}: $n carreras con superficie");
 }
+// La pista de césped de Maroñas se inauguró en 2018: antes, todas sus carreras fueron en arena.
+if (in_array(1, $hips, true)) {
+    $n = $db->exec("UPDATE carrera c JOIN reunion r ON r.id = c.reunion_id SET c.superficie = 'arena'
+                    WHERE r.hipodromo_id = 1 AND r.fecha < '2018-01-01' AND c.superficie IS NULL");
+    registro("Maroñas antes de 2018: $n carreras marcadas como arena");
+}
 registro("Fin: $total carreras actualizadas");
 
 /**
