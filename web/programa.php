@@ -26,4 +26,8 @@ $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['cla
 $vel = new Velocidades($db);
 $vel->cargar();
 $gen = new ProgramaNoOficial($db, $vel);
-echo $gen->html($gen->armar((new ParserPrograma())->parsearArchivo($d['archivo']), $hip, $fecha));
+echo $gen->html(
+    $gen->armar((new ParserPrograma())->parsearArchivo($d['archivo']), $hip, $fecha),
+    $gen->fechasConReunion($config['carpeta_crudos'] . '/programas'),
+    'programa.php?fecha={fecha}&hipodromo={hipodromo}',
+);

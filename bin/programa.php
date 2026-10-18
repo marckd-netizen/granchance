@@ -50,5 +50,6 @@ $salida = $opc['salida'] ?? sprintf('%s/programas/%s_%d.html', $config['carpeta_
 if (!is_dir(dirname($salida))) {
     mkdir(dirname($salida), 0775, true);
 }
-file_put_contents($salida, $gen->html($p));
+// Los enlaces del calendario apuntan a los otros programas generados en la misma carpeta (AAAA-MM-DD_<hip>.html).
+file_put_contents($salida, $gen->html($p, $gen->fechasConReunion($config['carpeta_crudos'] . '/programas')));
 registro(sprintf('%d carreras, programa no oficial en %s', count($p['carreras']), $salida));
