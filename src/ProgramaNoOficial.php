@@ -22,6 +22,10 @@ use PDO;
 final class ProgramaNoOficial
 {
     public const ANTECEDENTES = 6;
+    /** Puesta de sol aproximada por mes en Uruguay; la luz artificial se prende 20 minutos antes. */
+    private const PUESTA_SOL = [1 => '20:02', 2 => '19:40', 3 => '19:04', 4 => '18:22', 5 => '17:51', 6 => '17:41',
+        7 => '17:53', 8 => '18:15', 9 => '18:37', 10 => '19:00', 11 => '19:29', 12 => '19:56'];
+    private const LUZ_ANTES_MIN = 20;
     private const MESES = ['ene' => 1, 'feb' => 2, 'mar' => 3, 'abr' => 4, 'may' => 5, 'jun' => 6, 'jul' => 7, 'ago' => 8,
         'set' => 9, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dic' => 12];
 
@@ -42,6 +46,7 @@ final class ProgramaNoOficial
             $c['distancia'] = $distancias[$c['numero']] ?? $this->distanciaPorRecord($hip, $c['record'], $fecha);
             $c['distancia_origen'] = isset($distancias[$c['numero']]) ? 'indicada' : ($c['distancia'] ? 'récord' : null);
             $c['superficie'] = $sup;
+            $c['con_luz'] = self::conLuz($fecha, $c['hora']);
             $corren = array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']);
             $c['nivel'] = Clasificador::nivel($c['premio'], $c['condicion']);
             $c['edad'] = Clasificador::edad(array_column($corren, 'edad'));
@@ -54,6 +59,7 @@ final class ProgramaNoOficial
             foreach ($c['caballos'] as &$h) {
                 $h['anio_nac'] = Clasificador::anioNac($h['edad'], $fecha);
                 $h['antecedentes'] = $this->antecedentes($h['nombre'], $h['pais'], $h['anio_nac'], $fecha);
+                $h['corrio_con_luz'] = $c['con_luz'] && $h['antecedentes'] ? $this->corrioConLuz($h['nombre'], $h['pais'], $h['anio_nac'], $fecha) : null;
                 $h += $this->resumen($h, $c, $fecha, $nivelHoy, $pesoTop);
             }
             unset($h);
@@ -187,6 +193,33 @@ final class ProgramaNoOficial
         return $res;
     }
 
+    /** La carrera se corre con luz artificial si larga desde 20 minutos antes de la puesta de sol del mes. */
+    public static function conLuz(string $fecha, ?string $hora): bool
+    {
+        if (!$hora || !preg_match('/(\d{1,2}):(\d{2})/', $hora, $m)) {
+            return false;
+        }
+        [$ph, $pm] = array_map('intval', explode(':', self::PUESTA_SOL[(int)substr($fecha, 5, 2)]));
+        return (int)$m[1] * 60 + (int)$m[2] >= $ph * 60 + $pm - self::LUZ_ANTES_MIN;
+    }
+
+    /** Si el caballo ya corrió alguna vez con luz artificial (en toda su campaña, no solo los últimos antecedentes). */
+    private function corrioConLuz(string $nombre, string $pais, int $anioNac, string $fecha): bool
+    {
+        $st = $this->db->prepare(
+            "SELECT r.fecha, TIME_FORMAT(c.hora, '%H:%i') AS hora FROM caballo ca JOIN actuacion a ON a.caballo_id = ca.id
+             JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id
+             WHERE ca.nombre = ? AND ca.pais = ? AND ca.anio_nac = ? AND r.fecha < ?"
+        );
+        $st->execute([$nombre, $pais, $anioNac, $fecha]);
+        foreach ($st as $r) {
+            if (self::conLuz($r['fecha'], $r['hora'])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function resumen(array $h, array $c, string $fecha, ?float $nivelHoy, float $pesoTop): array
     {
         $ant = $h['antecedentes'];
@@ -222,6 +255,9 @@ final class ProgramaNoOficial
             }
         }
 
+        if ($c['con_luz'] && $h['corrio_con_luz'] === false) {
+            $r['notas'][] = 'Primera vez con luz artificial';
+        }
         if ($r['dias'] > 45) {
             $r['notas'][] = "Hace {$r['dias']} días que no corre";
         }
@@ -265,7 +301,7 @@ final class ProgramaNoOficial
     {
         $dist = $c['distancia'] ? $c['distancia'] . ' m' : 'distancia sin dato';
         $o = '<section class="carrera"><h2>' . $c['numero'] . 'ª carrera · ' . $e($c['hora']) . ' · ' . $dist . ' en ' . $e($c['superficie'])
-            . ' <small>Nro. ' . $e($c['nro_oficial']) . '</small></h2>';
+            . ($c['con_luz'] ? ' · con luz artificial' : '') . ' <small>Nro. ' . $e($c['nro_oficial']) . '</small></h2>';
         $o .= '<p class="premio"><b>' . $e($c['premio']) . '</b>. ' . $e($c['condicion']) . '</p>';
         $cat = Velocidades::nombreCategoria($c['nivel'], $c['edad'], $c['sexo']);
         $o .= '<p class="par">Categoría: <b>' . $e($cat) . '</b>';
