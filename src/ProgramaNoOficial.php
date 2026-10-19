@@ -565,10 +565,12 @@ final class ProgramaNoOficial
     private function htmlCaballo(array $h, \Closure $e): string
     {
         $cambio = fn (bool $c) => $c ? ' <span class="cambio">(cambió)</span>' : '';
-        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . self::mandil($h['numero']) . ' ' . $e($h['nombre'])
+        $col = $this->colores($h['stud']);
+        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ($col ? '<span class="chaquetilla">' . Chaquetilla::svg($col, 44) . '</span> ' : '')
+            . self::mandil($h['numero']) . ' ' . $e($h['nombre'])
             . ($h['pais'] !== 'URU' ? ' (' . $e($h['pais']) . ')' : '') . ($h['suplente'] ? ' <small>(suplente)</small>' : '') . ' <small>' . $e("{$h['pelaje']} {$h['sexo']} {$h['edad']} años") . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg · Jockey: ' . ($h['retirado'] ? 'No correrá' : $e($h['jockey']) . ($h['descargo'] ? ' (' . $h['descargo'] . ')' : '') . $cambio($h['cambio_jockey']))
-            . ' · Cuidador: ' . $e($h['cuidador']) . $cambio($h['cambio_cuidador']) . ' · Stud: ' . $e($h['stud']) . (($col = $this->colores($h['stud'])) ? ' <small class="colores">(' . $e($col) . ')</small>' : '') . $cambio($h['cambio_stud'])
+            . ' · Cuidador: ' . $e($h['cuidador']) . $cambio($h['cambio_cuidador']) . ' · Stud: ' . $e($h['stud']) . ($col ? ' <small class="colores">(' . $e($col) . ')</small>' : '') . $cambio($h['cambio_stud'])
             . ' · Gatera: ' . $e($h['gatera']) . ' · ' . $e($h['pedigri']) . '</p>';
         if (!$h['antecedentes']) {
             return $o . '<p class="debut">Debutante (sin antecedentes en la base)</p></div>';
@@ -668,7 +670,7 @@ JS;
 * { box-sizing:border-box; }
 body { margin:0; padding:16px; background:var(--fondo); color:var(--texto); font:13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header p, .premio, .par { color:var(--suave); max-width:1100px; }
-h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:17px; margin:0 0 4px; color:var(--acento); } h3 { font-size:14px; margin:12px 0 2px; }
+h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:17px; margin:0 0 4px; color:var(--acento); } h3 { font-size:14px; margin:12px 0 2px; } .chaquetilla svg { vertical-align:middle; } .chaquetilla { display:inline-block; }
 small { color:var(--suave); font-weight:normal; }
 .carrera { border-top:3px solid var(--acento); margin-top:28px; padding-top:10px; }
 table { border-collapse:collapse; margin:6px 0; font-variant-numeric:tabular-nums; display:block; overflow-x:auto; max-width:100%; }
