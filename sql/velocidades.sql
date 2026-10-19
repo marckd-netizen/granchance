@@ -68,3 +68,13 @@ CREATE TABLE IF NOT EXISTS equivalencia_hipodromo (
   ajuste       DECIMAL(6,3) NOT NULL,
   pares        INT UNSIGNED NOT NULL           -- caballos que pasaron de ese hipódromo a otro o al revés
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Studs registrados en el Stud Book Uruguayo con la descripción de sus colores (bin/studs.php). studbook_id es el
+-- número interno del Stud Book; clave es Personas::clave(nombre), para cruzarlo con persona (tipo 'stud').
+CREATE TABLE IF NOT EXISTS stud_colores (
+  studbook_id INT UNSIGNED PRIMARY KEY,
+  nombre      VARCHAR(120) NOT NULL,
+  clave       VARCHAR(120) NOT NULL,
+  colores     VARCHAR(400) NULL,
+  KEY (clave)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

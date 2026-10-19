@@ -45,6 +45,8 @@ final class ProgramaNoOficial
     private const MESES = ['ene' => 1, 'feb' => 2, 'mar' => 3, 'abr' => 4, 'may' => 5, 'jun' => 6, 'jul' => 7, 'ago' => 8,
         'set' => 9, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dic' => 12];
 
+    private ?array $colores = null;
+
     public function __construct(private PDO $db, private Velocidades $vel, private ?Modelo $modelo = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -547,13 +549,26 @@ final class ProgramaNoOficial
         return $o . '</section>';
     }
 
+    /** Colores del stud según el Stud Book (tabla stud_colores, bin/studs.php); null si no figura. */
+    private function colores(?string $stud): ?string
+    {
+        if ($this->colores === null) {
+            try {
+                $this->colores = $this->db->query('SELECT clave, colores FROM stud_colores')->fetchAll(PDO::FETCH_KEY_PAIR);
+            } catch (\PDOException) {
+                $this->colores = [];
+            }
+        }
+        return $stud ? ($this->colores[Personas::clave($stud)] ?? null) : null;
+    }
+
     private function htmlCaballo(array $h, \Closure $e): string
     {
         $cambio = fn (bool $c) => $c ? ' <span class="cambio">(cambió)</span>' : '';
         $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . self::mandil($h['numero']) . ' ' . $e($h['nombre'])
             . ($h['pais'] !== 'URU' ? ' (' . $e($h['pais']) . ')' : '') . ($h['suplente'] ? ' <small>(suplente)</small>' : '') . ' <small>' . $e("{$h['pelaje']} {$h['sexo']} {$h['edad']} años") . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg · Jockey: ' . ($h['retirado'] ? 'No correrá' : $e($h['jockey']) . ($h['descargo'] ? ' (' . $h['descargo'] . ')' : '') . $cambio($h['cambio_jockey']))
-            . ' · Cuidador: ' . $e($h['cuidador']) . $cambio($h['cambio_cuidador']) . ' · Stud: ' . $e($h['stud']) . $cambio($h['cambio_stud'])
+            . ' · Cuidador: ' . $e($h['cuidador']) . $cambio($h['cambio_cuidador']) . ' · Stud: ' . $e($h['stud']) . (($col = $this->colores($h['stud'])) ? ' <small class="colores">(' . $e($col) . ')</small>' : '') . $cambio($h['cambio_stud'])
             . ' · Gatera: ' . $e($h['gatera']) . ' · ' . $e($h['pedigri']) . '</p>';
         if (!$h['antecedentes']) {
             return $o . '<p class="debut">Debutante (sin antecedentes en la base)</p></div>';
