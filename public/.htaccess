@@ -1,9 +1,10 @@
 Options -Indexes
 DirectoryIndex index.php
+AddType "text/calendar; charset=utf-8" .ics
 
 # El índice y las páginas cambian todos los días: que el navegador vuelva a pedirlos.
 <IfModule mod_headers.c>
-  <FilesMatch "\.(html|json)$">
+  <FilesMatch "\.(html|json|ics)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>

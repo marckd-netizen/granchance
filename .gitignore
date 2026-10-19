@@ -7,3 +7,5 @@
 /public/indice.json
 /.clave_db
 /composer.phar
+/public/calendario/
+/public/calendario.ics

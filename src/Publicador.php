@@ -11,6 +11,9 @@ use PDO;
  *   (monta, horario, peso, retiros) desde la primera vez que se publicó.
  * - resultados/AAAA-MM-DD_<hip>.html: lo que decía el programa antes de la carrera contra lo que pasó, con el acierto.
  * - resultados/estadisticas.html: el acierto acumulado de todas las reuniones publicadas.
+ * - calendario/AAAA-MM-DD_<hip>.ics: las carreras de la reunión como eventos de 5 minutos, y calendario.ics con las
+ *   de todas las reuniones próximas (para suscribirse desde Google Calendar). Cada carrera del programa trae además
+ *   un enlace para agregarla sola a Google Calendar.
  * - indice.json: lo que lee index.php para listar las reuniones (sin necesitar la base).
  *
  * Las predicciones se guardan en la tabla prediccion cada vez que se genera el programa antes de correrse; después
@@ -26,7 +29,7 @@ final class Publicador
         private string $carpeta,
     ) {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        foreach (['', '/programas', '/resultados'] as $sub) {
+        foreach (['', '/programas', '/resultados', '/calendario'] as $sub) {
             if (!is_dir($this->carpeta . $sub)) {
                 mkdir($this->carpeta . $sub, 0775, true);
             }
@@ -70,6 +73,7 @@ final class Publicador
         $html = $this->gen->html($p, $fechas, '{fecha}_{hipodromo}.html');
         $archivo = sprintf('%s/programas/%s_%d.html', $this->carpeta, $fecha, $hip);
         file_put_contents($archivo, $this->agregarAvisos($html, $p, $borrados));
+        file_put_contents(sprintf('%s/calendario/%s_%d.ics', $this->carpeta, $fecha, $hip), self::ics($this->eventos($p)));
         return ['carreras' => count($p['carreras']), 'cambios' => $cambios, 'archivo' => $archivo];
     }
 
@@ -191,6 +195,7 @@ final class Publicador
         if (is_file("{$this->carpeta}/resultados/$clave.html")) {
             $o .= ' · <a href="../resultados/' . $clave . '.html">Predicción vs resultado</a>';
         }
+        $o .= ' · <a href="../calendario/' . $clave . '.ics">Agregar las carreras al calendario</a>';
         $o .= ' <small>Actualizado el ' . date('d/m H:i') . '</small></div>';
         if ($borrados) {
             $st = $this->db->prepare('SELECT MAX(leido_en) FROM borrado WHERE hipodromo_id = ? AND fecha = ?');
@@ -217,8 +222,101 @@ final class Publicador
         $js = "<script>fetch('../indice.json').then(r => r.json()).then(j => { if (typeof NAV === 'undefined') return;"
             . " for (const r of j.reuniones) { if (!r.programa) continue; const hs = NAV.fechas[r.fecha] || (NAV.fechas[r.fecha] = []);"
             . " if (!hs.includes(r.hipodromo)) hs.push(r.hipodromo); NAV.nombres[r.hipodromo] = NAV.nombres[r.hipodromo] || [r.nombre, r.sigla]; } }).catch(() => {});</script>";
+        // Cada carrera: enlace para agregarla sola a Google Calendar.
+        foreach ($this->eventos($p) as $n => $ev) {
+            $html = preg_replace('/(<section class="carrera" id="carrera-' . $n . '"><h2>.*?)<\/h2>/s',
+                '$1 <a class="gc-cal" href="' . $e(self::enlaceGoogle($ev)) . '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅</a></h2>', $html, 1);
+        }
         $html = preg_replace('/<body>/', '<body>' . $o, $html, 1);
         return str_replace('</body>', $js . '</body>', $html);
+    }
+
+    // ---------------------------------------------------------------- calendario
+
+    private const DURACION_EVENTO = 5;   // minutos
+
+    /**
+     * Las carreras de la reunión como eventos (hora de Uruguay). Las que no tienen hora quedan afuera.
+     * @return array<int, array{uid:string, inicio:\DateTimeImmutable, fin:\DateTimeImmutable, titulo:string, lugar:string, detalle:string}>
+     */
+    private function eventos(array $p): array
+    {
+        $zona = new \DateTimeZone('America/Montevideo');
+        $nombre = ProgramaNoOficial::nombreHipodromo((int)$p['hipodromo']);
+        $res = [];
+        foreach ($p['carreras'] as $c) {
+            if (!preg_match('/(\d{1,2}):(\d{2})/', (string)$c['hora'], $m)) {
+                continue;
+            }
+            $inicio = (new \DateTimeImmutable($p['fecha'], $zona))->setTime((int)$m[1], (int)$m[2]);
+            $res[$c['numero']] = [
+                'uid' => sprintf('%s-%d-%d@granchance.com', $p['fecha'], $p['hipodromo'], $c['numero']),
+                'inicio' => $inicio,
+                'fin' => $inicio->modify('+' . self::DURACION_EVENTO . ' minutes'),
+                'titulo' => sprintf('%dª %s · %s', $c['numero'], self::sigla((int)$p['hipodromo']), $c['premio'] ?: 'carrera'),
+                'lugar' => $nombre,
+                'detalle' => trim(($c['distancia'] ? $c['distancia'] . ' m en ' . $c['superficie'] . '. ' : '') . ($c['condicion'] ?? ''))
+                    . "\nhttps://granchance.com/programas/{$p['fecha']}_{$p['hipodromo']}.html#carrera-{$c['numero']}",
+            ];
+        }
+        return $res;
+    }
+
+    private static function enlaceGoogle(array $ev): string
+    {
+        return 'https://calendar.google.com/calendar/render?' . http_build_query([
+            'action' => 'TEMPLATE',
+            'text' => $ev['titulo'],
+            'dates' => $ev['inicio']->format('Ymd\THis') . '/' . $ev['fin']->format('Ymd\THis'),
+            'ctz' => 'America/Montevideo',
+            'location' => $ev['lugar'],
+            'details' => $ev['detalle'],
+        ], '', '&', PHP_QUERY_RFC3986);
+    }
+
+    /** Calendario iCalendar (RFC 5545) con los eventos; en UTC para no depender de la zona del que lo importa. */
+    private static function ics(array $eventos, string $nombre = 'GranChance'): string
+    {
+        $txt = fn (string $v) => str_replace(["\\", ';', ',', "\n"], ['\\\\', '\\;', '\\,', '\\n'], $v);
+        $utc = new \DateTimeZone('UTC');
+        $l = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GranChance//Programas no oficiales//ES', 'CALSCALE:GREGORIAN',
+            'X-WR-CALNAME:' . $txt($nombre), 'X-WR-TIMEZONE:America/Montevideo', 'REFRESH-INTERVAL;VALUE=DURATION:PT12H'];
+        foreach ($eventos as $ev) {
+            array_push($l, 'BEGIN:VEVENT', 'UID:' . $ev['uid'], 'DTSTAMP:' . gmdate('Ymd\THis\Z'),
+                'DTSTART:' . $ev['inicio']->setTimezone($utc)->format('Ymd\THis\Z'),
+                'DTEND:' . $ev['fin']->setTimezone($utc)->format('Ymd\THis\Z'),
+                'SUMMARY:' . $txt($ev['titulo']), 'LOCATION:' . $txt($ev['lugar']), 'DESCRIPTION:' . $txt($ev['detalle']), 'END:VEVENT');
+        }
+        $l[] = 'END:VCALENDAR';
+        // Líneas de hasta 75 bytes (las siguientes empiezan con un espacio), sin cortar caracteres UTF-8.
+        $o = '';
+        foreach ($l as $linea) {
+            while (strlen($linea) > 75) {
+                $corte = 75;
+                while ($corte > 0 && (ord($linea[$corte]) & 0xC0) === 0x80) {
+                    $corte--;
+                }
+                $o .= substr($linea, 0, $corte) . "\r\n";
+                $linea = ' ' . substr($linea, $corte);
+            }
+            $o .= $linea . "\r\n";
+        }
+        return $o;
+    }
+
+    /** calendario.ics: las carreras de las reuniones publicadas desde hace una semana en adelante. */
+    private function calendarioGeneral(): void
+    {
+        $desde = date('Y-m-d', strtotime('-7 day'));
+        $eventos = '';
+        foreach (glob("{$this->carpeta}/calendario/*.ics") ?: [] as $a) {
+            if (preg_match('/(\d{4}-\d{2}-\d{2})_\d+\.ics$/', $a, $m) && $m[1] >= $desde
+                && preg_match_all('/BEGIN:VEVENT\r\n.*?END:VEVENT\r\n/s', (string)file_get_contents($a), $ev)) {
+                $eventos .= implode('', $ev[0]);
+            }
+        }
+        $vacio = self::ics([], 'GranChance · carreras');
+        file_put_contents("{$this->carpeta}/calendario.ics", str_replace("END:VCALENDAR\r\n", $eventos . "END:VCALENDAR\r\n", $vacio));
     }
 
     /** Agrega al programa ya publicado el enlace a su página de resultado (sin regenerarlo). */
@@ -468,6 +566,7 @@ final class Publicador
         }
         unset($r);
         krsort($reuniones);
+        $this->calendarioGeneral();
         file_put_contents($this->carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'reuniones' => array_values($reuniones)],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
@@ -540,6 +639,7 @@ final class Publicador
 .gc-barra a { color:var(--acento); text-decoration:none; font-weight:600; }
 .gc-aviso { border:1px solid var(--linea); border-left:4px solid var(--menos); border-radius:6px; padding:6px 10px; margin:6px 0; background:var(--cabecera); }
 .gc-aviso ul { margin:4px 0 0; padding-left:18px; } .gc-aviso a { color:var(--acento); }
+.gc-cal { text-decoration:none; font-size:15px; margin-left:4px; }
 .nro-b { display:inline-block; min-width:18px; text-align:center; border-radius:4px; font-weight:700; border:1px solid var(--linea); text-decoration:line-through; }
 CSS;
 
