@@ -21,14 +21,16 @@ final class Modelo
     public const VARIABLES = ['proyeccion', 'mejor_anio', 'debutante', 'carreras', 'pct_ganadas', 'pct_place', 'dias', 'dias2',
         'ultimo_puesto', 'gano_ultima', 'cambio_categoria', 'kg_menos', 'gatera', 'mismo_jockey', 'mismo_cuidador',
         'jockey_gana', 'cuidador_gana', 'jockey_gana_tramo', 'cuidador_gana_tramo', 'jockey_place', 'cuidador_place', 'frente_rivales',
-        'mercado_ultima', 'mercado_prom', 'sin_mercado', 'padre_gana', 'padre_place', 'padre_tramo', 'abuelo_gana', 'madre_gana', 'gatera_gana', 'gatera_place'];
+        'mercado_ultima', 'mercado_prom', 'sin_mercado', 'padre_gana', 'padre_place', 'padre_tramo', 'abuelo_gana', 'madre_gana', 'gatera_gana', 'gatera_place',
+        'jockey_extremo', 'cuidador_extremo', 'jockey_debut', 'cuidador_debut', 'padre_debut', 'madre_debut', 'abuelo_debut'];
     public const MEDIA_VIDA = 5;            // carreras: cada 5 carreras hacia atrás el índice pesa la mitad
     private const MEDIA_VIDA_DIAS = 180;
     /**
      * Media vida (días) de las estadísticas que cambian despacio: padre, padre en superficie y tramo, abuelo materno,
      * madre y gatera en cada hipódromo, distancia y superficie.
      */
-    private const MEDIA_VIDA_LARGA = ['p' => 730, 'pt' => 730, 'a' => 730, 'm' => 1460, 'g' => 1460];
+    private const MEDIA_VIDA_LARGA = ['p' => 730, 'pt' => 730, 'a' => 730, 'm' => 1460, 'g' => 1460,
+        'je' => 365, 'ce' => 365, 'jd' => 730, 'cd' => 730, 'pd' => 1460, 'md' => 2920, 'ad' => 1460];
     private const SIN_MERCADO = -2.3;      // log de 10 %: lo que paga un caballo promedio
     private const SIN_DATO = -1.5;          // proyección de un debutante
     private const MIN_CORREDORES = 5;
@@ -130,7 +132,27 @@ final class Modelo
             'cuidador_gana_tramo' => $this->tasa("c|{$hoy['cuidador']}|{$hoy['hipodromo']}|$tramo", $t, 0),
             'jockey_place' => $this->tasa('j|' . $hoy['jockey'], $t, 1),
             'cuidador_place' => $this->tasa('c|' . $hoy['cuidador'], $t, 1),
+            // Especialistas: cómo ganan ese jockey y ese cuidador en carreras de menos de 900 m o de más de 1600 m (solo hoy es así).
+            'jockey_extremo' => ($e = self::extremo((int)$hoy['distancia'])) ? $this->tasa("je|{$hoy['jockey']}|$e", $t, 0) : 0.0,
+            'cuidador_extremo' => $e ? $this->tasa("ce|{$hoy['cuidador']}|$e", $t, 0) : 0.0,
+            // Debutantes: cuánto ganan en el debut los caballos de ese jockey, ese cuidador, ese padre, esa madre y ese abuelo.
+            ...$this->debut($ant ? null : $hoy, $t),
         ];
+    }
+
+    /** Menos de 900 m o más de 1600 m; null en el medio. */
+    public static function extremo(int $distancia): ?string
+    {
+        return $distancia && $distancia < 900 ? 'sprint' : ($distancia > 1600 ? 'fondo' : null);
+    }
+
+    private function debut(?array $hoy, int $t): array
+    {
+        $r = [];
+        foreach (['jockey' => 'jd', 'cuidador' => 'cd', 'padre' => 'pd', 'madre' => 'md', 'abuelo' => 'ad'] as $quien => $pre) {
+            $r[$quien . '_debut'] = $hoy !== null ? $this->tasa("$pre|" . ($hoy[$quien] ?? ''), $t, 0, 15) : 0.0;
+        }
+        return $r;
     }
 
     /**
@@ -202,6 +224,17 @@ final class Modelo
         if ($f['padre'] !== '') {
             $claves[] = "pt|{$f['padre']}|{$f['sup']}|$tramo";
         }
+        if ($e = self::extremo($f['dist'])) {
+            array_push($claves, "je|{$f['jockey']}|$e", "ce|{$f['cuidador']}|$e");
+        }
+        if (!empty($f['debut']) && ($f['corrio'] ?? true)) {
+            array_push($claves, "jd|{$f['jockey']}", "cd|{$f['cuidador']}");
+            foreach (['pd' => $f['padre'], 'md' => $f['madre'], 'ad' => $f['abuelo']] as $tipo => $nombre) {
+                if ($nombre !== '') {
+                    $claves[] = "$tipo|$nombre";
+                }
+            }
+        }
         if (($f['corrio'] ?? true) && (int)$f['gatera'] > 0) {
             $claves[] = self::claveGatera(['hipodromo' => $f['hip'], 'distancia' => $f['dist'], 'superficie' => $f['sup'], 'gatera' => $f['gatera']]);
         }
@@ -212,27 +245,30 @@ final class Modelo
         }
     }
 
-    /** Estadísticas de jockeys, cuidadores y pedigrí con las carreras de los 8 años anteriores a la fecha (para el programa). */
+    /** Estadísticas de jockeys, cuidadores y pedigrí con todas las carreras anteriores a la fecha (para el programa). */
     public function cargarPersonas(string $fecha): void
     {
         $this->est = [];
         $st = $this->db->prepare(
-            'SELECT r.fecha, r.hipodromo_id, c.distancia, c.superficie, a.puesto, a.gatera, a.sport, a.dist_acumulada,
+            'SELECT a.caballo_id, r.fecha, r.hipodromo_id, c.distancia, c.superficie, a.puesto, a.gatera, a.sport, a.dist_acumulada,
                     j.nombre AS jockey, cu.nombre AS cuidador,
                     ca.padre, ca.madre, ca.abuelo_materno
              FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id
              JOIN caballo ca ON ca.id = a.caballo_id
              LEFT JOIN persona j ON j.id = a.jockey_id LEFT JOIN persona cu ON cu.id = a.cuidador_id
-             WHERE r.fecha < ? AND r.fecha >= DATE_SUB(?, INTERVAL 8 YEAR) ORDER BY r.fecha'
+             WHERE r.fecha < ? ORDER BY r.fecha'
         );
-        $st->execute([$fecha, $fecha]);
+        $st->execute([$fecha]);
+        $corrio = [];   // para saber cuándo debutó cada caballo
         foreach ($st as $f) {
             $hip = (int)$f['hipodromo_id'];
+            $debut = !isset($corrio[$f['caballo_id']]);
+            $corrio[$f['caballo_id']] = true;
             $this->sumar(['jockey' => Personas::jockey($f['jockey']), 'cuidador' => Personas::cuidador($f['cuidador']), 'hip' => $hip,
                 'dist' => (int)$f['distancia'], 'sup' => Clasificador::superficie($f['superficie'], $hip),
                 'puesto' => $f['puesto'] !== null ? (int)$f['puesto'] : null, 'gatera' => $f['gatera'],
-                'corrio' => $f['puesto'] !== null || $f['sport'] !== null || $f['dist_acumulada'] !== null] + self::pedigri($f['padre'], $f['madre'], $f['abuelo_materno']),
-                self::dia($f['fecha']));
+                'corrio' => $f['puesto'] !== null || $f['sport'] !== null || $f['dist_acumulada'] !== null, 'debut' => $debut]
+                + self::pedigri($f['padre'], $f['madre'], $f['abuelo_materno']), self::dia($f['fecha']));
         }
     }
 
@@ -346,7 +382,7 @@ final class Modelo
             $puestos[$f0['carrera_id']] = array_column($carrera, 'puesto', 'caballo_id');
             $mercado = self::probabilidadesMercado(array_map(fn ($f) => (float)$f['sport'], array_column($carrera, null, 'caballo_id')));
             foreach ($carrera as $f) {
-                $this->sumar($f, $t);
+                $this->sumar($f + ['debut' => empty($hist[$f['caballo_id']])], $t);
                 $hist[$f['caballo_id']] ??= [];
                 array_unshift($hist[$f['caballo_id']], ['carrera' => $f0['carrera_id'], 'fecha' => $f['fecha'], 'indice' => $f['indice'], 'distancia' => $f['dist'],
                     'superficie' => $f['sup'], 'puesto' => $f['puesto'], 'nivel_par' => $f['nivel_par'], 'jockey' => $f['jockey'], 'cuidador' => $f['cuidador'],

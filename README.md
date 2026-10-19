@@ -65,7 +65,9 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
   gatera), cómo le fue contra los rivales de hoy cuando corrieron juntos, qué probabilidad le daban los dividendos en sus
   últimas carreras, cómo corren los hijos de su padre (en general y en esa superficie y tramo), de su madre y de su abuelo
   materno, cómo rinde esa gatera en ese hipódromo, distancia y superficie, y el % de ganadas y placé del jockey y del cuidador
-  con cualquier caballo, en general y en ese hipódromo y tramo. Los puntajes se dividen por una escala calibrada con los
+  con cualquier caballo, en general y en ese hipódromo y tramo, y aparte en carreras de menos de 900 m y de más de 1600 m
+  (especialistas en carreras muy rápidas y de fondo). Para los debutantes, además, cuánto ganan en el debut los caballos de
+  ese jockey, ese cuidador, ese padre, esa madre y ese abuelo materno. Los puntajes se dividen por una escala calibrada con los
   últimos 2 años para que las probabilidades altas no salgan exageradas.
   Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 30,7 % (la proyección sola, 27,7 %; el
   favorito de las apuestas, 35 %). Se probaron y no mejoran: los parciales (tiempos del puntero), la racha de 30 días de
