@@ -96,13 +96,20 @@ if (!isset($opc['sin-resultados']) && !isset($opc['borrados'])) {
     }
 }
 $pub->indice();
-// Si la web se publica en otra carpeta (public_html en cPanel), se le copian la portada y el .htaccess.
+// Si la web se publica en otra carpeta (public_html en cPanel), se le copia la portada. El .htaccess no se pisa
+// (cPanel guarda ahí la versión de PHP): se le agregan nuestras líneas entre marcas, una sola vez.
 $destino = realpath($config['carpeta_publica'] ?? __DIR__ . '/../public');
 if ($destino !== realpath(__DIR__ . '/../public')) {
-    foreach (['index.php', '.htaccess'] as $a) {
-        if (!is_file("$destino/$a") || filemtime(__DIR__ . "/../public/$a") > filemtime("$destino/$a")) {
-            copy(__DIR__ . "/../public/$a", "$destino/$a");
-        }
+    if (!is_file("$destino/index.php") || filemtime(__DIR__ . '/../public/index.php') > filemtime("$destino/index.php")) {
+        copy(__DIR__ . '/../public/index.php', "$destino/index.php");
+    }
+    $actual = is_file("$destino/.htaccess") ? (string)file_get_contents("$destino/.htaccess") : '';
+    $nuestro = "# BEGIN GranChance\n" . trim((string)file_get_contents(__DIR__ . '/../public/.htaccess')) . "\n# END GranChance\n";
+    $nuevo = preg_match('/# BEGIN GranChance.*?# END GranChance\n/s', $actual)
+        ? preg_replace('/# BEGIN GranChance.*?# END GranChance\n/s', $nuestro, $actual)
+        : rtrim($actual) . ($actual !== '' ? "\n\n" : '') . $nuestro;
+    if ($nuevo !== $actual) {
+        file_put_contents("$destino/.htaccess", $nuevo);
     }
 }
 registro('Índice actualizado');
