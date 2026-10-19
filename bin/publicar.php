@@ -39,6 +39,7 @@ $pub = new Publicador(
         $config['carpeta_crudos'] . '/programas', (float)$config['pausa_segundos']),
     $borrados,
     $config['carpeta_publica'] ?? __DIR__ . '/../public',
+    (string)($config['google_analytics'] ?? ''),
 );
 
 $hoy = date('Y-m-d');

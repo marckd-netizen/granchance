@@ -89,7 +89,9 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 | `programas/AAAA-MM-DD_<hip>.html` | Programa no oficial. Arriba, los borrados y los cambios detectados desde que se publicó. El calendario salta entre los programas publicados. |
 | `resultados/AAAA-MM-DD_<hip>.html` | Lo que decía el programa (orden por probabilidad) contra la llegada, carrera por carrera, con el acierto de la reunión. |
 | `resultados/estadisticas.html` | Acierto acumulado: total, por hipódromo y por mes, comparado con el favorito del público. |
-| `calendario/AAAA-MM-DD_<hip>.ics`, `calendario.ics` | Las carreras como eventos de 5 minutos: de una reunión, y de todas desde hace una semana (para suscribirse en Google Calendar con «Desde URL»). En el programa, cada carrera tiene además un 📅 que la agrega sola a Google Calendar. |
+| `calendario/AAAA-MM-DD_<hip>.ics`, `calendario.ics` | Las carreras como eventos de 5 minutos (los programas preliminares, con horas de relleno 01:00, 02:00..., quedan afuera hasta que salga el definitivo): de una reunión, y de todas desde hace una semana (para suscribirse en Google Calendar con «Desde URL»). En el programa, cada carrera tiene además un 📅 que la agrega sola a Google Calendar. |
+
+Para medir las visitas con Google Analytics 4, poner el ID de medición en `config.php` (`$c['google_analytics'] = 'G-XXXXXXXXXX';`): la etiqueta va en la portada y en todas las páginas generadas.
 
 Cómo trabaja:
 

@@ -21,4 +21,6 @@ return [
     // Servicio de caballos borrados (el que usa hipica.maronas.com.uy/RacingInfo/ScratchedHorses).
     'url_borrados' => 'https://mobile-rest-services-v3.azurewebsites.net/XTurfRestService.svc/GetScratchedRaceParticipants',
     'zona_horaria' => 'America/Montevideo',
+    // ID de medición de Google Analytics 4 ("G-XXXXXXXXXX"); vacío para no usarlo.
+    'google_analytics' => '',
 ];

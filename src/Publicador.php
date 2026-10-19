@@ -27,6 +27,7 @@ final class Publicador
         private Cliente $programas,
         private Borrados $borrados,
         private string $carpeta,
+        private string $analytics = '',
     ) {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         foreach (['', '/programas', '/resultados', '/calendario'] as $sub) {
@@ -96,13 +97,18 @@ final class Publicador
     public static function diferencias(array $antes, array $ahora): array
     {
         $res = [];
+        // Del programa preliminar al definitivo: un solo aviso en vez de una hora nueva por carrera.
+        $horario = self::sinHorario($antes) && !self::sinHorario($ahora);
+        if ($horario) {
+            $res[] = [array_key_first($ahora), null, 'Se publicó el programa definitivo, con horarios y montas'];
+        }
         foreach ($ahora as $n => $c) {
             $a = $antes[$n] ?? null;
             if ($a === null) {
                 $res[] = [$n, null, 'Se agregó la carrera'];
                 continue;
             }
-            if ($a['hora'] !== $c['hora']) {
+            if ($a['hora'] !== $c['hora'] && !$horario) {
                 $res[] = [$n, null, "Cambió la hora: de {$a['hora']} a {$c['hora']}"];
             }
             foreach ($c['caballos'] as $num => $h) {
@@ -195,8 +201,14 @@ final class Publicador
         if (is_file("{$this->carpeta}/resultados/$clave.html")) {
             $o .= ' · <a href="../resultados/' . $clave . '.html">Predicción vs resultado</a>';
         }
-        $o .= ' · <a href="../calendario/' . $clave . '.ics">Agregar las carreras al calendario</a>';
+        $preliminar = self::sinHorario(array_column($p['carreras'], null, 'numero'));
+        if (!$preliminar) {
+            $o .= ' · <a href="../calendario/' . $clave . '.ics">Agregar las carreras al calendario</a>';
+        }
         $o .= ' <small>Actualizado el ' . date('d/m H:i') . '</small></div>';
+        if ($preliminar) {
+            $o .= '<div class="gc-aviso"><b>Programa preliminar.</b> Todavía no tiene horarios ni montas: se completan solos cuando HRU publique el programa definitivo.</div>';
+        }
         if ($borrados) {
             $st = $this->db->prepare('SELECT MAX(leido_en) FROM borrado WHERE hipodromo_id = ? AND fecha = ?');
             $st->execute([$p['hipodromo'], $p['fecha']]);
@@ -227,6 +239,12 @@ final class Publicador
             $html = preg_replace('/(<section class="carrera" id="carrera-' . $n . '"><h2>.*?)<\/h2>/s',
                 '$1 <a class="gc-cal" href="' . $e(self::enlaceGoogle($ev)) . '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅</a></h2>', $html, 1);
         }
+        if ($preliminar) {
+            // Las horas de relleno no se muestran.
+            $html = preg_replace('/(<h2>\d+ª carrera) · \d{1,2}:\d{2} ·/u', '$1 · hora a confirmar ·', $html);
+            $html = preg_replace('/(ª) <small>0\d:\d{2}<\/small><\/a>/u', '$1</a>', $html);
+        }
+        $html = preg_replace('/<\/head>/', self::analytics($this->analytics) . '</head>', $html, 1);
         $html = preg_replace('/<body>/', '<body>' . $o, $html, 1);
         return str_replace('</body>', $js . '</body>', $html);
     }
@@ -244,6 +262,9 @@ final class Publicador
         $zona = new \DateTimeZone('America/Montevideo');
         $nombre = ProgramaNoOficial::nombreHipodromo((int)$p['hipodromo']);
         $res = [];
+        if (self::sinHorario(array_column($p['carreras'], null, 'numero'))) {
+            return [];
+        }
         foreach ($p['carreras'] as $c) {
             if (!preg_match('/(\d{1,2}):(\d{2})/', (string)$c['hora'], $m)) {
                 continue;
@@ -260,6 +281,21 @@ final class Publicador
             ];
         }
         return $res;
+    }
+
+    /**
+     * El Programa preliminar (antes de las inscripciones definitivas) trae horas de relleno: la 1ª a la 01:00, la 2ª a
+     * las 02:00, y así. Si todas las carreras tienen esa hora, el programa todavía no tiene horario.
+     * @param array<int, array{hora:?string}> $carreras número de carrera => carrera
+     */
+    public static function sinHorario(array $carreras): bool
+    {
+        foreach ($carreras as $n => $c) {
+            if ($c['hora'] !== sprintf('%02d:00', $n)) {
+                return false;
+            }
+        }
+        return (bool)$carreras;
     }
 
     private static function enlaceGoogle(array $ev): string
@@ -488,7 +524,7 @@ final class Publicador
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
         $titulo = sprintf('Predicción vs resultado · %s · %s', ProgramaNoOficial::nombreHipodromo($hip), date('d/m/Y', strtotime($fecha)));
         $clave = "{$fecha}_$hip";
-        $o = self::cabeceraHtml($titulo) . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a>'
+        $o = $this->cabeceraHtml($titulo) . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a>'
             . (is_file("{$this->carpeta}/programas/$clave.html") ? ' · <a href="../programas/' . $clave . '.html">Programa no oficial</a>' : '')
             . ' · <a href="estadisticas.html">Acierto acumulado</a></div>';
         $o .= '<h1>' . $e($titulo) . '</h1>';
@@ -567,7 +603,7 @@ final class Publicador
         unset($r);
         krsort($reuniones);
         $this->calendarioGeneral();
-        file_put_contents($this->carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'reuniones' => array_values($reuniones)],
+        file_put_contents($this->carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'analytics' => $this->analytics, 'reuniones' => array_values($reuniones)],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         // Estadísticas: total, por hipódromo y por mes; las predicciones reconstruidas van aparte.
@@ -579,7 +615,7 @@ final class Publicador
             $grupos[$tipo][ProgramaNoOficial::nombreHipodromo((int)$hip)][] = $r;
             $grupos[$tipo][substr($fecha, 0, 7)][] = $r;
         }
-        $o = self::cabeceraHtml('Acierto acumulado') . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a></div><h1>Acierto del programa no oficial</h1>'
+        $o = $this->cabeceraHtml('Acierto acumulado') . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a></div><h1>Acierto del programa no oficial</h1>'
             . '<p class="nota">Primero del programa: cuántas veces ganó (y su % de carreras), llegó en el marcador o el ganador estaba entre los 3 primeros del programa. '
             . 'Exacta y trifecta sin orden con los 2 y 3 primeros. Retorno por $1 apostado a ganador al primero del programa. Para comparar, cuántas veces ganó el favorito del público.</p>';
         krsort($grupos);
@@ -618,10 +654,20 @@ final class Publicador
         return $o . '</tbody></table>';
     }
 
-    private static function cabeceraHtml(string $titulo): string
+    private function cabeceraHtml(string $titulo): string
     {
         return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
-            . htmlspecialchars($titulo) . '</title><style>' . self::CSS_RESULTADOS . self::CSS_AVISOS . '</style></head><body>';
+            . htmlspecialchars($titulo) . '</title>' . self::analytics($this->analytics) . '<style>' . self::CSS_RESULTADOS . self::CSS_AVISOS . '</style></head><body>';
+    }
+
+    /** Etiqueta de Google Analytics 4 (config 'google_analytics', "G-XXXXXXX"); vacío si no está configurado. */
+    public static function analytics(string $id): string
+    {
+        if (!preg_match('/^G-[A-Z0-9]+$/', $id)) {
+            return '';
+        }
+        return '<script async src="https://www.googletagmanager.com/gtag/js?id=' . $id . '"></script>'
+            . "<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '$id');</script>";
     }
 
     private static function sigla(int $id): string

@@ -46,6 +46,10 @@ $fila = function (array $r) use ($e, $dias): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GranChance · Programas no oficiales</title>
+<?php $ga = (string)($indice['analytics'] ?? ''); if (preg_match('/^G-[A-Z0-9]+$/', $ga)): ?>
+<script async src="https://www.googletagmanager.com/gtag/js?id=<?= $ga ?>"></script>
+<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '<?= $ga ?>');</script>
+<?php endif ?>
 <style>
 :root { --fondo:#fff; --texto:#1d1d1f; --suave:#6b6b70; --linea:#e3e3e6; --cabecera:#f2f2f4; --acento:#1f4e8c; }
 @media (prefers-color-scheme: dark) { :root { --fondo:#161618; --texto:#ececef; --suave:#a0a0a8; --linea:#34343a; --cabecera:#232327; --acento:#8ab4f8; } }
