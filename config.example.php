@@ -15,4 +15,10 @@ return [
     'hipodromos' => [1, 4, 8, 9, 13, 16, 21, 22],
     'pausa_segundos' => 2,          // entre pedidos, para no cargar el servidor
     'carpeta_crudos' => __DIR__ . '/raw',
+    // Carpeta que se publica en la web (bin/publicar.php). En cPanel: el public_html del dominio, por ejemplo
+    // '/home/USUARIO/public_html', con este proyecto fuera de public_html.
+    'carpeta_publica' => __DIR__ . '/public',
+    // Servicio de caballos borrados (el que usa hipica.maronas.com.uy/RacingInfo/ScratchedHorses).
+    'url_borrados' => 'https://mobile-rest-services-v3.azurewebsites.net/XTurfRestService.svc/GetScratchedRaceParticipants',
+    'zona_horaria' => 'America/Montevideo',
 ];

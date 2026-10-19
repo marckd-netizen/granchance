@@ -2,3 +2,6 @@
 /raw/*
 !/raw/.gitkeep
 /config.php
+/public/programas/
+/public/resultados/
+/public/indice.json

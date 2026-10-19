@@ -1,0 +1,9 @@
+Options -Indexes
+DirectoryIndex index.php
+
+# El índice y las páginas cambian todos los días: que el navegador vuelva a pedirlos.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

@@ -26,6 +26,7 @@ cp config.example.php config.php   # completar usuario y clave de la base
 | `php bin/records.php` | Arma el mapa récord → distancia con los programas de `raw/programas` (el Programa no trae la distancia). Una vez, y de vez en cuando. |
 | `php bin/studs.php` | Baja del Stud Book Uruguayo los studs registrados con sus colores (`stud_colores`); el programa los muestra junto al stud y dibuja la chaquetilla (`src/Chaquetilla.php`). |
 | `php bin/programa.php [--fecha=AAAA-MM-DD] [--hipodromo=1]` | Genera el programa no oficial en HTML (`raw/programas/AAAA-MM-DD_<hip>.html`). También `web/programa.php?fecha=...&hipodromo=1`. |
+| `php bin/publicar.php [--borrados] [--desde=AAAA-MM-DD --hasta=AAAA-MM-DD]` | Publica la web en `public/` (o `carpeta_publica`): programas de hoy a 15 días con los cambios detectados, borrados tachados, predicción vs resultado y acierto acumulado. Ver "Publicación en la web". |
 
 El servicio tiene datos desde el 3/1/2015. Cuando un hipódromo no corrió ese día, responde con una redirección
 a `hipica.maronas.com.uy/RacingInfo/Errors?errorCode=ED0003`; se registra como "vacío" sin seguirla.
@@ -77,3 +78,49 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 - El Programa no trae la distancia: se deduce del récord que figura en cada carrera (`record_distancia`, o buscando la carrera
   del récord en la base). Si no se encuentra, `bin/programa.php` avisa y se indica con `--distancias=9:1300`.
 - Un caballo del programa es el mismo de la base si coinciden nombre, país y año de nacimiento (edad del programa al 1° de julio).
+
+## Publicación en la web (granchance.com)
+
+`bin/publicar.php` arma todo lo que se sirve en la web, como archivos estáticos más una portada en PHP que no usa la base:
+
+| Archivo | Qué es |
+|---|---|
+| `index.php` | Portada: próximas reuniones y reuniones pasadas por mes, con filtro por hipódromo. Lee `indice.json`. |
+| `programas/AAAA-MM-DD_<hip>.html` | Programa no oficial. Arriba, los borrados y los cambios detectados desde que se publicó. El calendario salta entre los programas publicados. |
+| `resultados/AAAA-MM-DD_<hip>.html` | Lo que decía el programa (orden por probabilidad) contra la llegada, carrera por carrera, con el acierto de la reunión. |
+| `resultados/estadisticas.html` | Acierto acumulado: total, por hipódromo y por mes, comparado con el favorito del público. |
+
+Cómo trabaja:
+
+- **Programas a 15 días.** Cada corrida vuelve a bajar el Programa de hoy a 15 días (el servicio lo publica unos días antes) y lo
+  compara con la lectura anterior (`programa_estado`). Los cambios de monta, horario, peso, caballos agregados o que no correrán
+  quedan en `programa_cambio` y se muestran en el programa con la fecha en que se detectaron.
+- **Predicciones congeladas.** Cada vez que se genera un programa antes de la reunión se guarda el orden y la probabilidad de cada
+  caballo (`prediccion`). Cuando la reunión ya tiene resultados, no se tocan más: la comparación es con lo publicado. Si se
+  publica una reunión ya corrida (`--desde`), la predicción se marca como *reconstruida* y se cuenta aparte.
+- **Borrados.** `--borrados` lee el servicio que usa hipica.maronas.com.uy/RacingInfo/ScratchedHorses
+  (`GetScratchedRaceParticipants`, todos los hipódromos de la fecha), los guarda en `borrado` y regenera los programas de hoy con
+  esos caballos tachados (sin probabilidad: el modelo reparte entre los que corren). HRU los publica a las 11:00; fuera de
+  11 a 20 h (Uruguay) el comando no hace nada.
+
+Tablas nuevas en `sql/publicacion.sql` (las crea `bin/publicar.php`).
+
+### Instalación en cPanel
+
+1. Subir el proyecto **fuera** de `public_html` (por ejemplo `/home/USUARIO/granchance`), con *Git Version Control* de cPanel
+   o por FTP, y correr `composer install` (Terminal de cPanel) o subir también la carpeta `vendor/`.
+2. Crear la base y el usuario en *MySQL Databases*, cargar `sql/schema.sql` y el respaldo con *phpMyAdmin* (o `mysql` desde la
+   Terminal), y completar `config.php`, con `'carpeta_publica' => '/home/USUARIO/public_html'`. `bin/publicar.php` copia ahí
+   `index.php` y `.htaccess`.
+3. Elegir PHP 8.1 o más en *MultiPHP Manager* / *Select PHP Version*, con `pdo_mysql`, `curl`, `zip`, `xml`, `gd` y `mbstring`.
+4. Primera vez: `php bin/records.php`, `php bin/velocidades.php`, `php bin/modelo.php` y `php bin/publicar.php`.
+5. En *Cron Jobs* (la hora es la del servidor; si no está en hora de Uruguay, correr las horas):
+
+```
+15 7 * * *  cd /home/USUARIO/granchance && php bin/diario.php && php bin/velocidades.php && php bin/publicar.php >> raw/publicar.log 2>&1
+5 * * * *   cd /home/USUARIO/granchance && php bin/publicar.php --borrados >> raw/publicar.log 2>&1
+30 4 * * 1  cd /home/USUARIO/granchance && php bin/modelo.php >> raw/modelo.log 2>&1
+```
+
+El primero carga los resultados de ayer, publica su predicción vs resultado y relee los programas a 15 días; el segundo toma los
+borrados del día (solo actúa de 11 a 20 h, hora de Uruguay); el tercero reentrena el modelo los lunes.
