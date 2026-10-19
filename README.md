@@ -68,7 +68,7 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
   últimos 2 años para que las probabilidades altas no salgan exageradas.
   Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 30,7 % (la proyección sola, 27,7 %; el
   favorito de las apuestas, 35 %). Se probaron y no mejoran: los parciales (tiempos del puntero), la racha de 30 días de
-  jockey y cuidador, el peso del caballo y el tratamiento, y un modelo de árboles (LightGBM) en lugar del logit. Correrlo después de
+  jockey y cuidador, el peso del caballo y el tratamiento, un modelo de árboles (LightGBM) en lugar del logit, y bajarle el peso (o sumarle velocidad) a las carreras en que llegó 6º o peor a más de 10 cuerpos. Correrlo después de
   `bin/velocidades.php`.
 - Notas: debutante en el hipódromo o la superficie, primera vez con luz artificial, días sin correr, sube o baja de categoría
   (par de la categoría de su última carrera contra el de hoy, en el hipódromo y la distancia de hoy), vuelve con un jockey
