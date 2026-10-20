@@ -25,6 +25,8 @@ cp config.example.php config.php   # completar usuario y clave de la base
 | `php bin/velocidades.php [--mostrar=1]` | Recalcula las velocidades normales (par) por categoría y los ajustes por pista y viento. Correrlo después de `diario.php`. |
 | `php bin/records.php` | Arma el mapa récord → distancia con los programas de `raw/programas` (el Programa no trae la distancia). Una vez, y de vez en cuando. |
 | `php bin/studs.php` | Baja del Stud Book Uruguayo los studs registrados con sus colores (`stud_colores`); el programa los muestra junto al stud y dibuja la chaquetilla (`src/Chaquetilla.php`). |
+| `php bin/prensa.php --bajar [--desde=2024-01-01] [--hipodromos=1,13]` | Baja del concurso de prensa (servicios.maronas.com.uy) el favorito, enemigo y sorpresa de cada periodista en Maroñas y Las Piedras (`prensa_pronostico`). Sigue donde quedó. El programa baja solo la reunión del día si todavía no está. |
+| `php bin/prensa.php --ajustar` | Entrena el modelo y ajusta, con las carreras que no vio, cuánto pesa la prensa en cada hipódromo (`prensa_coef`). Muestra el acierto con y sin prensa. Después correr `php bin/modelo.php`. |
 | `php bin/programa.php [--fecha=AAAA-MM-DD] [--hipodromo=1]` | Genera el programa no oficial en HTML (`raw/programas/AAAA-MM-DD_<hip>.html`). También `web/programa.php?fecha=...&hipodromo=1`. |
 | `php bin/publicar.php [--borrados] [--desde=AAAA-MM-DD --hasta=AAAA-MM-DD]` | Publica la web en `public/` (o `carpeta_publica`): programas de hoy a 15 días con los cambios detectados, borrados tachados, predicción vs resultado y acierto acumulado. Ver "Publicación en la web". |
 
@@ -66,12 +68,21 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
   gatera), cómo le fue contra los rivales de hoy cuando corrieron juntos, qué probabilidad le daban los dividendos en sus
   últimas carreras, cómo corren los hijos de su padre (en general y en esa superficie y tramo), de su madre y de su abuelo
   materno, cómo rinde esa gatera en ese hipódromo, distancia y superficie, y el % de ganadas y placé del jockey y del cuidador
-  con cualquier caballo, en general y en ese hipódromo y tramo. Los puntajes se dividen por una escala calibrada con los
+  con cualquier caballo, en general y en ese hipódromo y tramo, y aparte en carreras de menos de 900 m y de más de 1600 m
+  (especialistas en carreras muy rápidas y de fondo). Para los debutantes, además, cuánto ganan en el debut los caballos de
+  ese jockey, ese cuidador, ese padre, esa madre y ese abuelo materno, y si el caballo rinde mejor o peor que su promedio
+  en el hipódromo y la superficie de hoy (sobre todo en el césped de Maroñas). Los puntajes se dividen por una escala calibrada con los
   últimos 2 años para que las probabilidades altas no salgan exageradas.
   Entrenado con 2019-2023 y medido en 2024-2026: el de más probabilidad gana el 30,7 % (la proyección sola, 27,7 %; el
   favorito de las apuestas, 35 %). Se probaron y no mejoran: los parciales (tiempos del puntero), la racha de 30 días de
-  jockey y cuidador, el peso del caballo y el tratamiento, un modelo de árboles (LightGBM) en lugar del logit, y bajarle el peso (o sumarle velocidad) a las carreras en que llegó 6º o peor a más de 10 cuerpos. Correrlo después de
+  jockey y cuidador, el peso del caballo y el tratamiento, un modelo de árboles (LightGBM) en lugar del logit, bajarle el peso (o sumarle velocidad) a las carreras en que llegó 6º o peor a más de 10 cuerpos, y el peso del caballo estimado para hoy (el de su última carrera más lo que cambia según los días: con 10 días o menos baja 2,1 kg en promedio) comparado con el de su carrera más rápida, junto con "le faltaba la carrera" (segunda carrera después de un descanso de 60 días o más), y los kilos: corregir el índice de cada carrera anterior por los kilos que llevó (0,045 a 0,18 km/h por kilo) o sumar la diferencia de kilos con su última carrera, y cómo rinde cada caballo según los días de descanso (lo que un caballo rindió con descansos cortos o largos casi no se repite: correlación 0,06 entre dos mitades de su campaña). Correrlo después de
   `bin/velocidades.php`.
+- **Prensa** (`src/Prensa.php`): en Maroñas y Las Piedras, cuando el concurso de prensa ya publicó la reunión, la
+  probabilidad se combina con los votos: `b_modelo · log(prob) + b_fav · F + b_ene · E + b_sor · S`, con F, E y S la parte
+  de los periodistas que lo da de favorito, enemigo o sorpresa. El resumen muestra los votos y la probabilidad sin prensa.
+  Medido de octubre de 2025 a octubre de 2026 con carreras que ni el modelo ni el ajuste vieron: en Maroñas el de más
+  probabilidad gana el 30,4 % (27,4 % sin prensa) y la trifecta con sus 3 primeros sale el 13,0 % (9,9 %); en Las Piedras,
+  34,0 % (30,6 %) y 13,6 % (10,6 %).
 - Notas: debutante en el hipódromo o la superficie, primera vez con luz artificial, días sin correr, sube o baja de categoría
   (par de la categoría de su última carrera contra el de hoy, en el hipódromo y la distancia de hoy), vuelve con un jockey
   que ya lo montó (con cuántas ganó y fue placé), sube de peso.

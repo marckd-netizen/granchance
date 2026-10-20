@@ -4,7 +4,7 @@
 declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
-use GranChance\{Cliente, Modelo, ParserPrograma, ProgramaNoOficial, Velocidades};
+use GranChance\{Cliente, Modelo, ParserPrograma, Prensa, ProgramaNoOficial, Velocidades};
 
 $config = require __DIR__ . '/../config.php';
 $fecha = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['fecha'] ?? '') ? $_GET['fecha'] : date('Y-m-d');
@@ -26,7 +26,7 @@ $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['cla
 $vel = new Velocidades($db);
 $vel->cargar();
 $modelo = new Modelo($db, $vel);
-$gen = new ProgramaNoOficial($db, $vel, $modelo->cargar() ? $modelo : null);
+$gen = new ProgramaNoOficial($db, $vel, $modelo->cargar() ? $modelo : null, new Prensa($db));
 echo $gen->html(
     $gen->armar((new ParserPrograma())->parsearArchivo($d['archivo']), $hip, $fecha),
     $gen->fechasConReunion($config['carpeta_crudos'] . '/programas'),
