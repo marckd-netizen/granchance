@@ -9,6 +9,7 @@
 //                    y arma las páginas de resultado que falten de reuniones con predicción ya cargadas.
 //   --borrados       baja los borrados de hoy (los publica HRU a las 11:00) y vuelve a generar los programas de hoy.
 //   --desde/--hasta  rango de fechas a (re)generar; sirve para publicar reuniones pasadas (predicción "reconstruida").
+//                    Sin --hasta, llega hasta 15 días después de hoy.
 //
 // Cron sugerido (hora de Uruguay), ver README:
 //   15 7 * * *  php bin/diario.php && php bin/velocidades.php && php bin/publicar.php
@@ -54,7 +55,8 @@ if (isset($opc['borrados'])) {
     [$desde, $hasta] = [$hoy, $hoy];
 } else {
     $desde = $opc['desde'] ?? $hoy;
-    $hasta = $opc['hasta'] ?? (new DateTimeImmutable($desde))->modify('+' . (int)($opc['dias'] ?? 15) . ' day')->format('Y-m-d');
+    // Sin --hasta se llega siempre a 15 días después de hoy (también cuando --desde es una fecha pasada).
+    $hasta = $opc['hasta'] ?? (new DateTimeImmutable(max($desde, $hoy)))->modify('+' . (int)($opc['dias'] ?? 15) . ' day')->format('Y-m-d');
 }
 
 if (!isset($opc['sin-programas'])) {
