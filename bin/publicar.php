@@ -103,7 +103,7 @@ $pub->indice();
 // (cPanel guarda ahí la versión de PHP): se le agregan nuestras líneas entre marcas, una sola vez.
 $destino = realpath($config['carpeta_publica'] ?? __DIR__ . '/../public');
 if ($destino !== realpath(__DIR__ . '/../public')) {
-    if (!is_file("$destino/index.php") || filemtime(__DIR__ . '/../public/index.php') > filemtime("$destino/index.php")) {
+    if (!is_file("$destino/index.php") || md5_file(__DIR__ . '/../public/index.php') !== md5_file("$destino/index.php")) {
         copy(__DIR__ . '/../public/index.php', "$destino/index.php");
     }
     $actual = is_file("$destino/.htaccess") ? (string)file_get_contents("$destino/.htaccess") : '';
