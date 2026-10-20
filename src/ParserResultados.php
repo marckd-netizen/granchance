@@ -98,7 +98,85 @@ final class ParserResultados
             }
         }
         unset($carrera);
+        foreach ($res['carreras'] as &$carrera) {
+            $carrera['actuaciones'] = self::corregirTiempos($carrera['actuaciones'], $carrera['tiempo_ganador_seg']);
+        }
+        unset($carrera);
         return $res;
+    }
+
+    /**
+     * El Excel trae a veces un tiempo imposible: la diferencia con el ganador en lugar del tiempo ("0'00''68" con 4
+     * cuerpos), o un dígito mal ("0'00''77" por 0'36''73, "2'44''61" a 13 cuerpos).
+     * Las planillas calculan el tiempo de cada uno como el del ganador más 0,17 s por cuerpo: un tiempo que se aparta
+     * más de 2 s de esa cuenta se reemplaza por ella (y queda "tiempo_excel" con el original).
+     */
+    public static function corregirTiempos(array $actuaciones, ?float $tiempoGanador): array
+    {
+        $fila = null;
+        $bases = [];
+        foreach ($actuaciones as $a) {
+            $cuerpos = self::cuerpos($a['dist_acumulada'] ?? null);
+            if ($a['puesto'] === 1 && $a['tiempo_seg']) {
+                $fila ??= $a['tiempo_seg'];
+            } elseif ($a['puesto'] !== null && $a['tiempo_seg'] && $cuerpos !== null) {
+                $bases[] = $a['tiempo_seg'] - 0.17 * $cuerpos;
+            }
+        }
+        $ganador = $fila ?? $tiempoGanador;
+        // Si el ganador no concuerda con lo que dicen los demás (su tiempo menos sus cuerpos), no se sabe cuál está mal:
+        // en esa carrera solo se corrigen los tiempos imposibles (menos del 80 % del ganador).
+        $dudosa = false;
+        if ($ganador !== null && count($bases) >= 3) {
+            sort($bases);
+            $mediana = $bases[intdiv(count($bases), 2)];
+            $dudosa = abs($ganador - $mediana) > 2.0 && $mediana > 0.85 * $ganador;
+        }
+        if (!$ganador) {
+            return $actuaciones;
+        }
+        // Cuerpos de los que llegaron antes: si a uno le figuran menos, los cuerpos están mal, no el tiempo.
+        $antes = [];
+        foreach ($actuaciones as $a) {
+            $cuerpos = self::cuerpos($a['dist_acumulada'] ?? null);
+            if ($a['puesto'] !== null && $cuerpos !== null) {
+                $antes[$a['puesto']] = max($antes[$a['puesto']] ?? 0.0, $cuerpos);
+            }
+        }
+        foreach ($actuaciones as &$a) {
+            if ($a['puesto'] === null || $a['tiempo_seg'] === null) {
+                continue;
+            }
+            $cuerpos = $a['puesto'] === 1 ? 0.0 : self::cuerpos($a['dist_acumulada'] ?? null);
+            if ($cuerpos === null) {
+                continue;
+            }
+            $previos = array_filter($antes, fn ($c, $p) => $p < $a['puesto'], ARRAY_FILTER_USE_BOTH);
+            $imposible = $a['tiempo_seg'] < 0.8 * $ganador;
+            $esperado = round($ganador + 0.17 * $cuerpos, 2);
+            if ($imposible || !$dudosa && $cuerpos >= max($previos ?: [0.0]) && abs($a['tiempo_seg'] - $esperado) > 2.0 + 0.02 * $cuerpos) {
+                $c = (int)round($esperado * 100);
+                $a['tiempo_excel'] = $a['tiempo'];
+                $a['tiempo_seg'] = $esperado;
+                $a['tiempo'] = sprintf("%d'%02d''%02d", intdiv($c, 6000), intdiv($c % 6000, 100), $c % 100);
+            }
+        }
+        unset($a);
+        return $actuaciones;
+    }
+
+    /** Distancia al ganador en cuerpos: "2 1/4 Cpos." -> 2.25, "Cza." -> 0.2; null si no llegó o no figura. */
+    public static function cuerpos(?string $d): ?float
+    {
+        $d = trim((string)$d);
+        $cortas = ['Hoc.' => 0.05, '1/2 Cza.' => 0.1, 'Cza.' => 0.2, '1/2 Pzo.' => 0.25, 'Pzo.' => 0.4, 'Empate' => 0.0];
+        if (isset($cortas[$d]) || str_starts_with($d, 'm') && str_ends_with($d, 'nima')) {
+            return $cortas[$d] ?? 0.0;
+        }
+        if (!preg_match('#^(?:(\d+)\s*)?(?:(\d+)/(\d+)\s*)?Cpos?\.$#u', $d, $m) || ($m[1] ?? '') === '' && ($m[2] ?? '') === '') {
+            return null;
+        }
+        return (float)($m[1] ?: 0) + (($m[2] ?? '') !== '' ? (int)$m[2] / (int)$m[3] : 0);
     }
 
     private function cabecera(int $numero, int $id, string $premio, string $c1, string $c2): array

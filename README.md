@@ -22,6 +22,7 @@ cp config.example.php config.php   # completar usuario y clave de la base
 | `php bin/reprocesar.php [--desde=AAAA-MM-DD] [--hasta=AAAA-MM-DD]` | Vuelve a leer los Excel de `raw/` y re-carga esas reuniones sin pedirlas de nuevo (después de corregir el lector). |
 | `php bin/superficie.php [--hipodromos=1]` | Completa arena/césped de cada carrera con el Programa del día (el programa la trae desde 2018). |
 | `php bin/parsear.php archivo.xls` | Muestra en JSON lo que se lee de un Excel, sin tocar la base. |
+| `php bin/tiempos.php [--mostrar]` | Corrige en la base los tiempos imposibles que trae el Excel (la diferencia con el ganador en lugar del tiempo, o un dígito mal): el tiempo pasa a ser el del ganador más 0,17 s por cuerpo, como lo calculan las planillas. Al leer un Excel nuevo se corrige solo. Después, `bin/velocidades.php` y `bin/modelo.php`. |
 | `php bin/velocidades.php [--mostrar=1]` | Recalcula las velocidades normales (par) por categoría y los ajustes por pista y viento. Correrlo después de `diario.php`. |
 | `php bin/records.php` | Arma el mapa récord → distancia con los programas de `raw/programas` (el Programa no trae la distancia). Una vez, y de vez en cuando. |
 | `php bin/studs.php` | Baja del Stud Book Uruguayo los studs registrados con sus colores (`stud_colores`); el programa los muestra junto al stud y dibuja la chaquetilla (`src/Chaquetilla.php`). |
