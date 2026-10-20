@@ -469,11 +469,11 @@ final class Fichas
         $indice = is_file($this->carpeta . '/indice.json') ? json_decode((string)file_get_contents($this->carpeta . '/indice.json'), true) : [];
         return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
             . htmlspecialchars($titulo) . ' · GranChance</title>' . Publicador::analytics((string)($indice['analytics'] ?? '')) . '<style>' . self::CSS . '</style></head><body>'
-            . '<nav class="barra"><a href="/">GranChance · todos los programas</a> <form action="/buscar"><input name="q" placeholder="Buscar caballo, jockey, stud…"></form></nav>'
+            . '<nav class="barra"><span><a href="/">GranChance · todos los programas</a> · <a href="/ranking">Rankings</a></span> <form action="/buscar"><input name="q" placeholder="Buscar caballo, jockey, stud…"></form></nav>'
             . $cuerpo . '</body></html>';
     }
 
-    private const CSS = <<<'CSS'
+    public const CSS = <<<'CSS'
 :root { --fondo:#fff; --texto:#1d1d1f; --suave:#6b6b70; --linea:#e3e3e6; --cabecera:#f2f2f4; --acento:#1f4e8c; --oro:#fff4cc; --plata:#eef0f3; --bronce:#f8e6d6; }
 @media (prefers-color-scheme: dark) { :root { --fondo:#161618; --texto:#ececef; --suave:#a0a0a8; --linea:#34343a; --cabecera:#232327; --acento:#8ab4f8; --oro:#3d3518; --plata:#2c2f35; --bronce:#3b2c20; } }
 * { box-sizing:border-box; }
