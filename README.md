@@ -126,3 +126,34 @@ Diferencias con Uruguay:
   tiempo propio de cada caballo en cada tramo). En carreras recientes, también los parciales de 200 m dentro de los últimos tramos (`sub200`).
 - `carrera.comentario` es el Racing Incident Report; desde que el HKJC lo publica por caballo, también está en `actuacion.incidente`.
 - No publica en resultados: hora de la carrera, viento ni total apostado (quedan NULL).
+
+### Programa no oficial de Hong Kong
+
+El mismo programa y el mismo modelo que en Uruguay, con los datos del HKJC (`src/HK/Velocidades.php`, `src/HK/Modelo.php`,
+`src/HK/ProgramaNoOficial.php`). El logit (ajuste, calibración y medición) es común a los dos: `src/LogitCondicional.php`.
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/hk_modelo.php [--desde=2017-01-01] [--probar=AAAA-MM-DD]` | Calcula las velocidades y entrena el modelo con las carreras de HK; guarda los coeficientes en `modelo_coef` de `granchance_hk`. Tarda menos de un minuto. |
+| `php bin/hk_programa.php --fecha=AAAA-MM-DD --hipodromo=HV\|ST [--salida=archivo.html]` | Baja el Race Card de cada carrera (`racecard?racedate=...&Racecourse=HV&RaceNo=N`, queda en `raw/hk/.../programa_NN.html.gz`) y arma el programa no oficial en `raw/hk/programas/AAAA-MM-DD_<HV\|ST>.html`. El HKJC publica el programa dos días antes; conviene volver a correrlo el día de la reunión (retirados, cambios de jockey). |
+
+Qué cambia respecto de Uruguay:
+
+- **Par** por hipódromo, distancia, superficie (césped o arena sintética) y **clase** (Class 1 a 5, G1/G2/G3, Griffin), con los 4
+  primeros en pista GOOD. No se separa por edad ni sexo: casi todos son castrados de 3 a 9 años. Cada caballo tiene su propio tiempo.
+- **Ajustes**: el HKJC no publica el viento. Se mide el going (GOOD TO FIRM, YIELDING, WET SLOW...) y, sobre eso, el **riel**
+  (A, B, C+3...), que mueve los tiempos casi lo mismo. Se probó además una variante por reunión (lo que todavía se apartan del par
+  todas las carreras del día) y no mejora el acierto (24,7 % contra 24,5 %).
+- **Equivalencia**: Sha Tin = 0; Happy Valley da +0,21 km/h con los mismos caballos.
+- **Modelo**: las mismas 40 variables. El mercado sale de la cuota final a ganador; los kilos, del peso llevado; jockeys y
+  cuidadores por nombre completo (hay muchos Leung, Chan y Wong con la misma inicial); "sprint" es 1000 m y "fondo" 1800 m o más;
+  corrió = tiene cuota final (WV/WX no corrieron; PU, UR, FE y DNF cuentan como perdedores).
+- El HKJC no guarda el rating de cada caballo en cada carrera (solo el de hoy, en el programa): se muestra pero no entra al modelo.
+  En los handicaps el peso ya lo refleja (más rating, más peso).
+- Entrenado con 2017 a octubre de 2024 y medido con las 1.717 carreras de octubre de 2024 a octubre de 2026: el de más
+  probabilidad gana el **24,5 %** (la proyección sola, 20,1 %; el favorito de las cuotas, 30,1 %). Trifecta sin orden con sus 3
+  primeros, 4,4 %; exacta sin orden, 20,2 %. Bien calibrado: a los que les da 24 % ganan 22 %; a los de 44 %, 43 %.
+  El mercado de Hong Kong es mucho más eficiente que el de Uruguay (allá el favorito gana 35 % y el modelo 30,7 %).
+- El programa muestra además rating y su cambio, banda de rating de la carrera, riel, equipo (avisa la primera vez con
+  anteojeras, capucha...), peso del caballo, posiciones en cada tramo, la cuota final de cada antecedente y la chaquetilla oficial.
+- Debutantes: sin carreras en HK. Los PPG llegan con campaña en el exterior que la base no tiene.
