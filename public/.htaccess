@@ -2,6 +2,13 @@ Options -Indexes
 DirectoryIndex index.php
 AddType "text/calendar; charset=utf-8" .ics
 
+# Reuniones de un hipódromo: /hipodromo-rocha
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^hipodromo-([a-z0-9-]+)/$ /hipodromo-$1 [R=301,L]
+  RewriteRule ^hipodromo-([a-z0-9-]+)$ index.php?h=$1 [L,QSA]
+</IfModule>
+
 # El índice y las páginas cambian todos los días: que el navegador vuelva a pedirlos.
 <IfModule mod_headers.c>
   <FilesMatch "\.(html|json|ics)$">

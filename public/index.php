@@ -11,13 +11,26 @@ $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
 $dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 $meses = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-// Filtro opcional por hipódromo: ?hipodromo=1
+// Filtro por hipódromo: /hipodromo-rocha (el .htaccess lo pasa como ?h=rocha). Las direcciones viejas
+// (?hipodromo=22) redirigen a la nueva.
+$slug = fn (string $n) => trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(strtr($n, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n', 'Ñ' => 'n']))), '-');
 $hips = [];
 foreach ($reuniones as $r) {
     $hips[$r['hipodromo']] = $r['nombre'];
 }
 asort($hips);
-$filtro = isset($_GET['hipodromo'], $hips[(int)$_GET['hipodromo']]) ? (int)$_GET['hipodromo'] : null;
+$porSlug = [];
+foreach ($hips as $id => $n) {
+    $porSlug[$slug($n)] = $id;
+}
+if (isset($_GET['hipodromo'], $hips[(int)$_GET['hipodromo']])) {
+    header('Location: hipodromo-' . $slug($hips[(int)$_GET['hipodromo']]), true, 301);
+    exit;
+}
+$filtro = isset($_GET['h']) ? ($porSlug[(string)$_GET['h']] ?? null) : null;
+if (isset($_GET['h']) && $filtro === null) {
+    http_response_code(404);
+}
 if ($filtro !== null) {
     $reuniones = array_values(array_filter($reuniones, fn ($r) => $r['hipodromo'] === $filtro));
 }
@@ -45,7 +58,7 @@ $fila = function (array $r) use ($e, $dias): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GranChance · Programas no oficiales</title>
+<title><?= $filtro !== null ? 'Reuniones del hipódromo de ' . $e($hips[$filtro]) . ' · GranChance' : 'GranChance · Programas no oficiales' ?></title>
 <?php $ga = (string)($indice['analytics'] ?? ''); if (preg_match('/^G-[A-Z0-9]+$/', $ga)): ?>
 <script async src="https://www.googletagmanager.com/gtag/js?id=<?= $ga ?>"></script>
 <script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '<?= $ga ?>');</script>
@@ -69,11 +82,11 @@ details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:1
 </style>
 </head>
 <body>
-<h1>GranChance</h1>
+<h1>GranChance<?= $filtro !== null ? ' · ' . $e($hips[$filtro]) : '' ?></h1>
 <p>Programas no oficiales de los hipódromos de Uruguay: antecedentes con velocidades corregidas por pista y viento, índices contra el par de cada categoría y probabilidad de ganar. Después de cada reunión, la predicción comparada con el resultado. <a href="resultados/estadisticas.html">Acierto acumulado</a>.</p>
 <p><small>Carreras en tu calendario: cada carrera del programa tiene un 📅 para agregarla a Google Calendar, y arriba un enlace para agregar todas las de la reunión. Para tenerlas todas siempre al día, en Google Calendar elegí «Otros calendarios › Desde URL» y pegá <code>https://granchance.com/calendario.ics</code>.</small></p>
 <?php if ($hips): ?>
-<div class="filtro"><a href="./"<?= $filtro === null ? ' class="actual"' : '' ?>>Todos</a><?php foreach ($hips as $id => $n): ?><a href="?hipodromo=<?= $id ?>"<?= $filtro === $id ? ' class="actual"' : '' ?>><?= $e($n) ?></a><?php endforeach ?></div>
+<div class="filtro"><a href="./"<?= $filtro === null ? ' class="actual"' : '' ?>>Todos</a><?php foreach ($hips as $id => $n): ?><a href="hipodromo-<?= $slug($n) ?>"<?= $filtro === $id ? ' class="actual"' : '' ?>><?= $e($n) ?></a><?php endforeach ?></div>
 <?php endif ?>
 <?php if (!$reuniones): ?>
 <p>Todavía no hay programas publicados.</p>
