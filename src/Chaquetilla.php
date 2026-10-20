@@ -15,14 +15,14 @@ final class Chaquetilla
     private const COLORES = [
         'azul marino' => '#1a2550', 'azul electrico' => '#1e50ff', 'azul francia' => '#2b4fc7',
         'azul(?:es)? (?:oscuro|noche)' => '#1b2a6b', 'azul(?:es)? (?:claro|cielo)' => '#7fb2ff', 'azul(?:es)?' => '#1f3fbf',
-        'verdes? (?:manzana|limon|claro|loro|fluo\w*)' => '#7ccf3a', 'verdes? (?:oscuro|ingles|botella|militar|oliva)' => '#14532d',
+        'verdes? (?:manzana|limon|claro|luz|loro|fluo\w*)' => '#7ccf3a', 'verdes? (?:oscuro|ingles|botella|militar|oliva)' => '#14532d',
         'verdes? agua' => '#5fd3b8', 'verdes?' => '#1e8f3e', 'celestes?' => '#6ec6f0', 'turquesas?' => '#1fbfb8',
         'blanc[oa]s?' => '#ffffff', 'negr[oa]s?' => '#111111', 'roj[oa]s?|punzo|carmesi|lacre|escarlata' => '#d4161c',
         'bordo|bordeaux|granate|guinda|vino' => '#7a1022', 'amarill[oa]s?' => '#ffd31a', 'oro|dorad[oa]s?|mostaza' => '#d4a017',
         'naranjas?|anaranjad[oa]s?' => '#ff7a12', 'fucsias?' => '#e0168a', 'rosad[oa]s?|rosas?' => '#f7a1c4',
         'violetas?|morad[oa]s?|purpuras?' => '#6b2fa0', 'lilas?|lavanda' => '#b79be0',
         'gris(?:es)?(?: perla)?|platead[oa]s?|plata' => '#9aa0a6', 'marron(?:es)?|cafe|chocolate|habano' => '#6b3e1f',
-        'cremas?|beige|hueso|marfil' => '#f3e6c4', 'salmon' => '#fa8f72', 'ocre' => '#c98b2b',
+        'cremas?|beige|hueso|marfil' => '#f3e6c4', 'salmon' => '#fa8f72', 'ocre' => '#c98b2b', 'caqui|kaki' => '#b5a36b',
     ];
 
     /** Partes y adornos que se nombran en la descripción → nombre interno. */
@@ -43,6 +43,33 @@ final class Chaquetilla
         'mitades?|verticalmente' => 'mitades', 'cuarteles|cuartos' => 'cuarteles', 'cascos|longitudinal\w*' => 'cascos',
         'horizontal(?:es)?' => 'horizontales', 'vertical(?:es)?' => 'verticales', 'oblicu\w*|diagonal\w*|sesgad\w*' => 'oblicuas',
         'cuadros|damero|ajedrez|cuadriculad\w*' => 'cuadros', 'triangulos?' => 'triangulos',
+    ];
+
+    /**
+     * Chaquetilla oficial del hipódromo según el número del mandil, para los studs que no figuran en el Stud Book.
+     * Copiadas tal cual de la lista oficial (la 6 lleva mangas y gorra verdes, y la 10 y la 17 son iguales).
+     */
+    public const OFICIALES = [
+        1 => 'Rojo y blanco en mitades horizontales, mangas y gorra rojas',
+        2 => 'Blanco y negro en mitades horizontales, mangas y gorra blancas',
+        3 => 'Azul y blanco en mitades horizontales, mangas y gorra azules',
+        4 => 'Oro y negro en mitades horizontales, mangas y gorra oro',
+        5 => 'Verde y blanco en mitades horizontales, mangas y gorra verdes',
+        6 => 'Negro y amarillo en mitades horizontales, mangas y gorra verdes',
+        7 => 'Naranja y negro en mitades horizontales, mangas y gorra naranja',
+        8 => 'Rosado y negro en mitades horizontales, mangas y gorra rosado',
+        9 => 'Turquesa y negro en mitades horizontales, mangas y gorra turquesa',
+        10 => 'Violeta y blanco en mitades horizontales, mangas y gorra violeta',
+        11 => 'Gris y rojo en mitades horizontales, mangas y gorra gris',
+        12 => 'Verde luz y negro en mitades horizontales, mangas y gorra verde luz',
+        13 => 'Marrón y blanco en mitades horizontales, mangas y gorra marrones',
+        14 => 'Granate y oro en mitades horizontales, mangas y gorra granate',
+        15 => 'Caqui y blanco en mitades horizontales, mangas y gorra caqui',
+        16 => 'Azul y amarillo en mitades horizontales, mangas y gorra azules',
+        17 => 'Violeta y blanco en mitades horizontales, mangas y gorra violetas',
+        18 => 'Verde claro y blanco en mitades horizontales, mangas y gorra verde claro',
+        19 => 'Azul y rosado en mitades horizontales, mangas y gorra azules',
+        20 => 'Marrón y amarillo en mitades horizontales, mangas y gorra marrones',
     ];
 
     private const BORDE = '#3a3a3a';

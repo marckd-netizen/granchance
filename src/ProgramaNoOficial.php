@@ -565,8 +565,10 @@ final class ProgramaNoOficial
     private function htmlCaballo(array $h, \Closure $e): string
     {
         $cambio = fn (bool $c) => $c ? ' <span class="cambio">(cambió)</span>' : '';
+        // Sin colores en el Stud Book, la chaquetilla oficial del hipódromo para ese número.
         $col = $this->colores($h['stud']);
-        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ($col ? '<span class="chaquetilla">' . Chaquetilla::svg($col, 44) . '</span> ' : '')
+        $dibujo = $col ?? Chaquetilla::OFICIALES[(int)$h['numero']] ?? null;
+        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ($dibujo ? '<span class="chaquetilla">' . Chaquetilla::svg($dibujo, 44) . '</span> ' : '')
             . self::mandil($h['numero']) . ' ' . $e($h['nombre'])
             . ($h['pais'] !== 'URU' ? ' (' . $e($h['pais']) . ')' : '') . ($h['suplente'] ? ' <small>(suplente)</small>' : '') . ' <small>' . $e("{$h['pelaje']} {$h['sexo']} {$h['edad']} años") . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg · Jockey: ' . ($h['retirado'] ? 'No correrá' : $e($h['jockey']) . ($h['descargo'] ? ' (' . $h['descargo'] . ')' : '') . $cambio($h['cambio_jockey']))
