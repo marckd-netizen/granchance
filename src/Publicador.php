@@ -503,7 +503,20 @@ final class Publicador
         $resumen = self::medir($carreras);
         $resumen['origen'] = $carreras[0]['origen'];
         file_put_contents(sprintf('%s/resultados/%s_%d.html', $this->carpeta, $fecha, $hip), $this->htmlResultado($hip, $fecha, $carreras, $resumen));
-        $this->guardarResumen("{$fecha}_$hip", $resumen);
+        // También por categoría de carrera (carrera_categoria, de bin/velocidades.php), para el acumulado por hipódromo.
+        // Si la carrera todavía no está clasificada, se clasifica con su premio y condición.
+        $st = $this->db->prepare('SELECT cc.nivel, c.premio, c.condicion FROM carrera c LEFT JOIN carrera_categoria cc ON cc.carrera_id = c.id WHERE c.id = ?');
+        $porNivel = [];
+        foreach ($carreras as $c) {
+            $st->execute([$c['carrera']['id']]);
+            $k = $st->fetch(PDO::FETCH_ASSOC);
+            $porNivel[$k['nivel'] ?? Clasificador::nivel($k['premio'], $k['condicion'])][] = $c;
+        }
+        $guardado = $resumen;
+        foreach ($porNivel as $nivel => $cs) {
+            $guardado['niveles'][$nivel] = array_diff_key(self::medir($cs), ['aciertos' => 1]);
+        }
+        $this->guardarResumen("{$fecha}_$hip", $guardado);
         return $resumen;
     }
 
@@ -727,12 +740,16 @@ final class Publicador
 
         // Estadísticas: total, por hipódromo y por mes; las predicciones reconstruidas van aparte.
         $grupos = [];
+        $niveles = [];
         foreach ($resumen as $k => $r) {
             [$fecha, $hip] = explode('_', $k);
             $tipo = $r['origen'] === 'previa' ? 'Publicadas antes de la carrera' : 'Reconstruidas después';
             $grupos[$tipo]['Total'][] = $r;
             $grupos[$tipo][ProgramaNoOficial::nombreHipodromo((int)$hip)][] = $r;
             $grupos[$tipo][substr($fecha, 0, 7)][] = $r;
+            foreach ($r['niveles'] ?? [] as $nivel => $m) {
+                $niveles[$tipo][ProgramaNoOficial::nombreHipodromo((int)$hip)][$nivel][] = $m;
+            }
         }
         $o = $this->cabeceraHtml('Acierto acumulado') . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a></div><h1>Acierto del programa no oficial</h1>'
             . '<p class="nota">Primero del programa: cuántas veces ganó (y su % de carreras), llegó en el marcador o el ganador estaba entre los 3 primeros del programa. '
@@ -744,8 +761,26 @@ final class Publicador
             unset($filas['Total']);
             uksort($filas, fn ($a, $b) => [ctype_digit($a[0]), $b] <=> [ctype_digit($b[0]), $a]);
             $o .= self::tablaAcierto(array_map(fn ($n, $rs) => [$n, self::sumar($rs)], array_keys($total + $filas), $total + $filas), true);
+            // Por categoría de carrera, una tabla por hipódromo (las de más carreras primero).
+            $porHip = $niveles[$tipo] ?? [];
+            uasort($porHip, fn ($a, $b) => array_sum(array_map(fn ($ms) => array_sum(array_column($ms, 'carreras')), $b))
+                <=> array_sum(array_map(fn ($ms) => array_sum(array_column($ms, 'carreras')), $a)));
+            foreach ($porHip as $nombre => $porNivel) {
+                uksort($porNivel, fn ($a, $b) => [self::ordenNivel($a), $a] <=> [self::ordenNivel($b), $b]);
+                $o .= '<h3>' . htmlspecialchars($nombre) . ' por categoría</h3>'
+                    . self::tablaAcierto(array_map(fn ($n, $ms) => [$n, self::sumar($ms)], array_keys($porNivel), $porNivel), true);
+            }
         }
         file_put_contents($this->carpeta . '/resultados/estadisticas.html', $o . '</body></html>');
+    }
+
+    /** Orden de las categorías: de las más importantes a las más bajas. */
+    private static function ordenNivel(string $nivel): int
+    {
+        $orden = ['G1', 'G2', 'G3', 'Listado', 'Clásico', 'Especial', 'Handicap', 'Preferencial', 'Condicional',
+            'Ganadores de 4+', 'Ganadores de 3', 'Ganadores de 2', 'Ganadores de 1', 'Perdedores', 'Cuarto de milla', 'Otras'];
+        $i = array_search($nivel, $orden, true);
+        return $i === false ? count($orden) : $i;
     }
 
     private static function sumar(array $rs): array
@@ -817,6 +852,7 @@ CSS;
 body { margin:0; padding:16px; background:var(--fondo); color:var(--texto); font:13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
 h1 { font-size:20px; margin:4px 0 8px; } h2 { font-size:16px; margin:0 0 6px; color:var(--acento); }
 small, .nota { color:var(--suave); font-weight:normal; } .nota { max-width:1000px; }
+h3 { font-size:14px; margin:14px 0 2px; }
 .carrera { border-top:3px solid var(--acento); margin-top:22px; padding-top:8px; }
 .dos { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
 table { border-collapse:collapse; margin:6px 0; font-variant-numeric:tabular-nums; display:block; overflow-x:auto; max-width:100%; }

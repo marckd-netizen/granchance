@@ -139,7 +139,10 @@ final class Fichas
         if ($corridas) {
             // Lado a lado solo en la ficha del caballo: las de jockeys y cuidadores tienen muchas filas y montos grandes.
             $o .= '<div class="' . ($tipo === 'caballo' ? 'dos' : 'una') . '"><div><h2>Puestos por año</h2>' . self::tablaPuestos($corridas, fn ($a) => substr($a['fecha'], 0, 4), 'Año') . '</div>'
-                . '<div><h2>Puestos por distancia</h2>' . self::tablaPuestos($corridas, fn ($a) => $a['distancia'] ? $a['distancia'] . ' m' : 'sin dato', 'Distancia', true) . '</div></div>';
+                . '<div><h2>Puestos por distancia</h2>' . self::tablaPuestos($corridas, fn ($a) => ($a['distancia'] ? $a['distancia'] . ' m' : 'sin dato') . (self::cesped($a) ? ' césped' : ''), 'Distancia', true) . '</div></div>';
+            // Por hipódromo, con el césped de Maroñas aparte de la arena.
+            $o .= '<h2>Puestos por hipódromo y pista</h2>' . self::tablaPuestos($corridas, fn ($a) => ProgramaNoOficial::nombreHipodromo((int)$a['hipodromo_id'])
+                . ((int)$a['hipodromo_id'] === 1 ? (self::cesped($a) ? ' · césped' : ' · arena') : ''), 'Hipódromo', false, true);
             $lista = $corridas;
             $desde = date('Y-m-d', strtotime('-' . self::DIAS_LISTA . ' day'));
             if (!$todas) {
@@ -292,6 +295,11 @@ final class Fichas
 
     // ---------------------------------------------------------------- tablas
 
+    private static function cesped(array $a): bool
+    {
+        return Clasificador::superficie($a['superficie'], (int)$a['hipodromo_id']) === 'césped';
+    }
+
     private static function resumen(array $corridas): string
     {
         $n = count($corridas);
@@ -304,13 +312,17 @@ final class Fichas
             . ' · Premios: <b>' . self::plata(self::sumarPremios($corridas)) . '</b> · Desde ' . date('d/m/Y', strtotime(end($corridas)['fecha'])) . '</p>';
     }
 
-    private static function tablaPuestos(array $corridas, \Closure $grupo, string $titulo, bool $ordenNumerico = false): string
+    private static function tablaPuestos(array $corridas, \Closure $grupo, string $titulo, bool $ordenNumerico = false, bool $porCantidad = false): string
     {
         $g = [];
         foreach ($corridas as $a) {
             $g[$grupo($a)][] = $a;
         }
-        $ordenNumerico ? uksort($g, fn ($a, $b) => (int)$a <=> (int)$b) : krsort($g);
+        if ($porCantidad) {
+            uasort($g, fn ($a, $b) => count($b) <=> count($a));
+        } else {
+            $ordenNumerico ? uksort($g, fn ($a, $b) => [(int)$a, $a] <=> [(int)$b, $b]) : krsort($g);
+        }
         $o = '<table class="puestos"><thead><tr><th>' . $titulo . '</th><th>Corrió</th><th>1º</th><th>2º</th><th>3º</th><th>4º</th><th>5º</th><th>Otros</th><th>% gan.</th><th>Premios</th></tr></thead><tbody>';
         $fila = function (string $etiqueta, array $as, bool $total = false): string {
             $n = count($as);
