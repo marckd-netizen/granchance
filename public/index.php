@@ -85,7 +85,8 @@ details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:1
 </head>
 <body>
 <h1>GranChance<?= $filtro !== null ? ' · ' . $e($hips[$filtro]) : '' ?></h1>
-<p>Programas no oficiales de los hipódromos de Uruguay: antecedentes con velocidades corregidas por pista y viento, índices contra el par de cada categoría y probabilidad de ganar. Después de cada reunión, la predicción comparada con el resultado. <a href="resultados/estadisticas.html">Acierto acumulado</a>.</p>
+<p>Programas no oficiales de los hipódromos de Uruguay: antecedentes con velocidades corregidas por pista y viento, índices contra el par de cada categoría y probabilidad de ganar, generados objetivamente por modelos matemáticos.</p>
+<p>Después de cada reunión, la predicción es comparada con el resultado, con total transparencia. <a href="resultados/estadisticas.html">Acierto acumulado</a>.</p>
 <p><small>Carreras en tu calendario: cada carrera del programa tiene un 📅 para agregarla a Google Calendar, y arriba un enlace para agregar todas las de la reunión. Para tenerlas todas siempre al día, en Google Calendar elegí «Otros calendarios › Desde URL» y pegá <code>https://granchance.com/calendario.ics</code>.</small></p>
 <form class="buscar" action="buscar"><input name="q" placeholder="Buscar caballo, jockey, cuidador, stud o criador"> <button>Buscar</button></form>
 <?php if ($hips): ?>
