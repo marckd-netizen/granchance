@@ -78,3 +78,24 @@ CREATE TABLE IF NOT EXISTS stud_colores (
   colores     VARCHAR(400) NULL,
   KEY (clave)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Pronósticos del concurso de prensa de Maroñas y Las Piedras (Prensa, bin/prensa.php). carrera es el número de la
+-- carrera en la reunión; caballo viene cortado a 9 letras, como lo publica el concurso. pronosticador 'Promedios' es el
+-- consenso que calcula el propio concurso.
+CREATE TABLE IF NOT EXISTS prensa_pronostico (
+  hipodromo_id  SMALLINT UNSIGNED NOT NULL,
+  fecha         DATE NOT NULL,
+  carrera       TINYINT UNSIGNED NOT NULL,
+  pronosticador VARCHAR(80) NOT NULL,
+  tipo          ENUM('Favorito','Enemigo','Sorpresa') NOT NULL,
+  caballo       VARCHAR(30) NOT NULL,
+  KEY (hipodromo_id, fecha, carrera)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Cómo se combina la probabilidad del modelo con los votos de la prensa en cada hipódromo (Prensa::combinar).
+CREATE TABLE IF NOT EXISTS prensa_coef (
+  hipodromo_id SMALLINT UNSIGNED NOT NULL,
+  variable     VARCHAR(20) NOT NULL,
+  coeficiente  DOUBLE NOT NULL,
+  PRIMARY KEY (hipodromo_id, variable)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

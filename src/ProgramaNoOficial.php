@@ -46,8 +46,10 @@ final class ProgramaNoOficial
         'set' => 9, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dic' => 12];
 
     private ?array $colores = null;
+    /** Reuniones cuyos pronósticos de prensa ya se intentó bajar en esta corrida ("hip fecha" => true). */
+    private array $prensaBajada = [];
 
-    public function __construct(private PDO $db, private Velocidades $vel, private ?Modelo $modelo = null)
+    public function __construct(private PDO $db, private Velocidades $vel, private ?Modelo $modelo = null, private ?Prensa $prensa = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -151,7 +153,11 @@ final class ProgramaNoOficial
         unset($h);
     }
 
-    /** Probabilidad de ganar de cada caballo que corre (Modelo), en $h['prob']. */
+    /**
+     * Probabilidad de ganar de cada caballo que corre (Modelo), en $h['prob']. En Maroñas y Las Piedras se combina con
+     * los votos del concurso de prensa (Prensa) cuando ya están publicados: $h['prob_modelo'] queda con la del modelo
+     * solo y $h['prensa'] con los votos.
+     */
     private function probabilidades(array &$c, string $fecha, ?float $nivelHoy, float $pesoTop): void
     {
         $corren = array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']);
@@ -168,10 +174,30 @@ final class ProgramaNoOficial
                 'cuidador' => Personas::cuidador($h['cuidador']), 'frente' => $h['frente_indice']] + $this->pedigri($h));
         }
         $prob = $this->modelo?->probabilidades($rasgos) ?? [];
+        $votos = $prob ? $this->votosPrensa($c, $fecha) : null;
+        $conPrensa = $votos !== null ? $this->prensa->combinar($c['hipodromo'], $prob, $votos) : $prob;
         foreach ($c['caballos'] as $i => &$h) {
-            $h['prob'] = $prob[$i] ?? null;
+            $h['prob'] = $conPrensa[$i] ?? null;
+            $h['prob_modelo'] = $prob[$i] ?? null;
+            $h['prensa'] = $votos[$i] ?? null;
         }
         unset($h);
+        $c['con_prensa'] = $votos !== null && $this->prensa->tieneCoeficientes($c['hipodromo']);
+    }
+
+    /** Votos del concurso de prensa en esta carrera, por índice de caballo; los baja si todavía no están. */
+    private function votosPrensa(array $c, string $fecha): ?array
+    {
+        $hip = (int)$c['hipodromo'];
+        if (!$this->prensa || !isset(Prensa::URLS[$hip])) {
+            return null;
+        }
+        if (!isset($this->prensaBajada["$hip $fecha"]) && !$this->prensa->tiene($hip, $fecha)) {
+            $this->prensaBajada["$hip $fecha"] = true;
+            $this->prensa->bajar($hip, $fecha);
+        }
+        $corren = array_filter($c['caballos'], fn ($h) => !$h['retirado'] && !$h['suplente']);
+        return $this->prensa->votos($hip, $fecha, (int)$c['numero'], array_map(fn ($h) => $h['nombre'], $corren));
     }
 
     /**
@@ -457,7 +483,7 @@ final class ProgramaNoOficial
         $o .= '<header><h1>' . $e($titulo) . '</h1><p>Reunión Nº ' . $e($p['nro_reunion']) . '. Velocidades en km/h. '
             . '<b>Par</b>: promedio de los 4 primeros en pista seca y sin viento para esa distancia, superficie y categoría. '
             . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal), llevado a este hipódromo (lo corrido en un hipódromo más fuerte vale más). '
-            . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>Prob.</b>: probabilidad de ganar según un modelo que combina la proyección, la campaña del caballo y cómo vienen ganando su jockey y su cuidador (con cualquier caballo); el resumen se ordena por ella. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
+            . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>Prob.</b>: probabilidad de ganar según un modelo que combina la proyección, la campaña del caballo y cómo vienen ganando su jockey y su cuidador (con cualquier caballo); en Maroñas y Las Piedras, cuando ya está publicado, se suma el concurso de prensa (<b>Prensa</b>: cuántos periodistas lo dan de favorito, enemigo o sorpresa), que mejora el acierto. El resumen se ordena por ella. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
         }
@@ -534,11 +560,12 @@ final class ProgramaNoOficial
         $orden = $c['caballos'];
         usort($orden, fn ($a, $b) => [$a['retirado'], $b['prob'] ?? -1, $b['vs_par_hoy'] ?? $b['proyeccion'] ?? -99] <=> [$b['retirado'], $a['prob'] ?? -1, $a['vs_par_hoy'] ?? $a['proyeccion'] ?? -99]);
         $o .= '<table class="resumen"><thead><tr><th>Nº</th><th>Caballo</th><th>Kg</th><th>Gat.</th><th title="Índices de toda la campaña, pesando más las últimas carreras">Historia</th><th>Último</th>'
-            . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
+            . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th>' . (($c['con_prensa'] ?? false) ? '<th title="Periodistas del concurso de prensa que lo dan de favorito, enemigo o sorpresa">Prensa</th><th title="Probabilidad del modelo sin la prensa">Sin prensa</th>' : '') . '<th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . self::mandil($h['numero']) . '</td><td>' . $e($h['nombre']) . '</td><td>' . self::num($h['peso'], 1)
                 . '</td><td>' . $e($h['gatera']) . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo']) . '</td><td>' . self::idx($h['en_distancia'])
                 . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">' . ($h['prob'] !== null ? self::num(100 * $h['prob'], 0) . ' %' : '')
+                . (($c['con_prensa'] ?? false) ? '</td><td>' . self::prensa($h['prensa']) . '</td><td>' . ($h['prob_modelo'] !== null ? self::num(100 * $h['prob_modelo'], 0) . ' %' : '') : '')
                 . '</td><td>' . $e($h['dias'])
                 . '</td><td>' . ($h['retirado'] ? 'No correrá' : ($h['suplente'] ? 'Suplente. ' : '') . (!$h['antecedentes'] ? 'Debutante' : $e(implode('. ', $h['notas'])))) . '</td></tr>';
         }
@@ -606,6 +633,22 @@ final class ProgramaNoOficial
     {
         [$fondo, $texto] = self::MANDILES[(int)$numero] ?? ['#555555', '#ffffff'];
         return '<span class="nro" style="background:' . $fondo . ';color:' . $texto . '">' . htmlspecialchars($numero) . '</span>';
+    }
+
+    /** "F 9 · E 4 · S 1": cuántos periodistas lo dan de favorito, enemigo y sorpresa. */
+    private static function prensa(?array $v): string
+    {
+        if (!$v || !$v['periodistas']) {
+            return '';
+        }
+        $partes = [];
+        foreach (['favorito' => 'F', 'enemigo' => 'E', 'sorpresa' => 'S'] as $k => $letra) {
+            $n = (int)round($v[$k] * $v['periodistas']);
+            if ($n) {
+                $partes[] = "$letra $n";
+            }
+        }
+        return implode(' · ', $partes);
     }
 
     private static function num(int|float|null $v, int $dec = 2): string

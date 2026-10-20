@@ -8,7 +8,7 @@
 //   --refrescar   vuelve a bajar el programa aunque ya esté en raw/programas (por retirados de último momento)
 require __DIR__ . '/_inicio.php';
 
-use GranChance\{Cliente, Modelo, ParserPrograma, ProgramaNoOficial, Velocidades};
+use GranChance\{Cliente, Modelo, ParserPrograma, Prensa, ProgramaNoOficial, Velocidades};
 
 $opc = opciones($argv);
 $fecha = $opc['fecha'] ?? date('Y-m-d');
@@ -43,7 +43,7 @@ if (!$modelo->cargar()) {
     registro('Sin modelo entrenado: el programa sale sin probabilidades (correr php bin/modelo.php)');
     $modelo = null;
 }
-$gen = new ProgramaNoOficial($db, $vel, $modelo);
+$gen = new ProgramaNoOficial($db, $vel, $modelo, new Prensa($db));
 $p = $gen->armar((new ParserPrograma())->parsearArchivo($archivo), $hip, $fecha, $distancias);
 
 foreach ($p['carreras'] as $c) {

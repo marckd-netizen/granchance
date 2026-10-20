@@ -42,6 +42,10 @@ final class Modelo
     private float $escala = 1.0;
     /** @var array<string, array{0:float,1:float,2:float,3:int}> persona => [ganadas, placé, corridas, día] con decaimiento */
     private array $est = [];
+    /** @var list<int> caballo de cada fila de entrenamiento */
+    private array $caballoDeFila = [];
+    /** @var array<int, array<int, float>> carrera => caballo => probabilidad, en las carreras de prueba (sin verlas al entrenar) */
+    private array $predicciones = [];
 
     public function __construct(private PDO $db, private Velocidades $vel)
     {
@@ -308,6 +312,12 @@ final class Modelo
 
     // ---------------------------------------------------------------- probabilidades
 
+    /** Probabilidades que dio el modelo en las carreras de prueba del último entrenar(), que no usó para ajustar. */
+    public function predicciones(): array
+    {
+        return $this->predicciones;
+    }
+
     public function cargar(): bool
     {
         $this->coef = [];
@@ -399,6 +409,7 @@ final class Modelo
                     $y[] = $f['puesto'] === 1 ? 1 : 0;
                     $puesto[] = $f['puesto'] ?? 99;
                     $grupo[] = (int)$f0['carrera_id'];
+                    $this->caballoDeFila[] = (int)$f['caballo_id'];
                     $fechas[] = $f0['fecha'];
                 }
             }
@@ -604,6 +615,9 @@ final class Modelo
         foreach ($porCarrera as $is) {
             $mejor = $mejorProy = null;
             $prob = $this->probabilidades(array_combine($is, array_map(fn ($i) => array_combine(self::VARIABLES, $X[$i]), $is)));
+            foreach ($prob as $i => $p) {
+                $this->predicciones[$grupo[$i]][$this->caballoDeFila[$i]] = $p;
+            }
             arsort($prob);
             $tres = array_slice(array_keys($prob), 0, 3);
             $trifectas[$grupo[$is[0]]] = count(array_filter($tres, fn ($i) => $puesto[$i] <= 3)) === 3;
