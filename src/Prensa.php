@@ -14,8 +14,8 @@ use PDO;
  *
  * donde F, E y S son la parte de los periodistas que dio a ese caballo de favorito, enemigo o sorpresa. Los b se
  * ajustan por hipódromo con las carreras que el modelo no vio (bin/prensa.php --ajustar) y se guardan en prensa_coef.
- * Medido en Maroñas de julio de 2025 a octubre de 2026: el modelo solo acierta el ganador en el 28,5 % y la trifecta
- * con sus 3 primeros en el 10,5 %; combinado con la prensa, 31,4 % y 13,7 %.
+ * Medido de octubre de 2025 a octubre de 2026: en Maroñas el ganador pasa de 27,4 % a 30,4 % y la trifecta con sus 3
+ * primeros de 9,9 % a 13,0 %; en Las Piedras, de 30,6 % a 34,0 % y de 10,6 % a 13,6 %.
  */
 final class Prensa
 {
