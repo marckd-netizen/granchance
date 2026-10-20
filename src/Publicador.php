@@ -233,8 +233,9 @@ final class Publicador
         $st = $this->db->prepare('SELECT carrera, texto, detectado_en FROM programa_cambio WHERE hipodromo_id = ? AND fecha = ? ORDER BY detectado_en DESC, carrera, id');
         $st->execute([$p['hipodromo'], $p['fecha']]);
         $cambios = $st->fetchAll(PDO::FETCH_ASSOC);
-        if ($cambios) {
-            $o .= '<details class="gc-aviso" open><summary><b>Cambios desde que se publicó</b> (' . count($cambios) . ')</summary><ul>';
+        // En el programa preliminar no se muestran: cambia casi todo hasta que sale el definitivo.
+        if ($cambios && !$preliminar) {
+            $o .= '<details class="gc-aviso"><summary><b>Cambios desde que se publicó</b> (' . count($cambios) . ')</summary><ul>';
             foreach ($cambios as $c) {
                 $o .= '<li><small>' . date('d/m H:i', strtotime($c['detectado_en'])) . '</small> <a href="#carrera-' . $c['carrera'] . '">' . $c['carrera'] . 'ª</a>: ' . $e($c['texto']) . '</li>';
             }
