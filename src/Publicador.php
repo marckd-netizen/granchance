@@ -206,6 +206,8 @@ final class Publicador
             $o .= ' · <a href="../calendario/' . $clave . '.ics">Agregar las carreras al calendario</a>';
         }
         $o .= ' <small>Actualizado el ' . date('d/m H:i') . '</small></div>';
+        $barra = $o;
+        $o = '';
         if ($preliminar) {
             $o .= '<div class="gc-aviso"><b>Programa preliminar.</b> Todavía no tiene horarios ni montas: se completan solos cuando HRU publique el programa definitivo.</div>';
         }
@@ -245,7 +247,14 @@ final class Publicador
             $html = preg_replace('/(ª) <small>0\d:\d{2}<\/small><\/a>/u', '$1</a>', $html);
         }
         $html = preg_replace('/<\/head>/', self::analytics($this->analytics) . '</head>', $html, 1);
-        $html = preg_replace('/<body>/', '<body>' . $o, $html, 1);
+        // La navegación del programa queda fija arriba (y sube 16px): la barra va dentro de ella para que no la tape,
+        // y los avisos justo debajo.
+        if (str_contains($html, '<nav class="navegacion">')) {
+            $html = preg_replace('/<nav class="navegacion">/', '<nav class="navegacion">' . $barra, $html, 1);
+            $html = preg_replace('/<\/nav>/', '</nav>' . $o, $html, 1);
+        } else {
+            $html = preg_replace('/<body>/', '<body>' . $barra . $o, $html, 1);
+        }
         return str_replace('</body>', $js . '</body>', $html);
     }
 
