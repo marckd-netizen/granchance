@@ -20,7 +20,7 @@ final class Chaquetilla
         'blanc[oa]s?' => '#ffffff', 'negr[oa]s?' => '#111111', 'roj[oa]s?|punzo|carmesi|lacre|escarlata' => '#d4161c',
         'bordo|bordeaux|granate|guinda|vino' => '#7a1022', 'amarill[oa]s?' => '#ffd31a', 'oro|dorad[oa]s?|mostaza' => '#d4a017',
         'naranjas?|anaranjad[oa]s?' => '#ff7a12', 'fucsias?' => '#e0168a', 'rosad[oa]s?|rosas?' => '#f7a1c4',
-        'violetas?|morad[oa]s?|purpuras?' => '#6b2fa0', 'lilas?|lavanda' => '#b79be0',
+        'violetas? clar[oa]s?' => '#a98be0', 'violetas?|morad[oa]s?|purpuras?' => '#6b2fa0', 'lilas?|lavanda' => '#b79be0',
         'gris(?:es)?(?: perla)?|platead[oa]s?|plata' => '#9aa0a6', 'marron(?:es)?|cafe|chocolate|habano' => '#6b3e1f',
         'cremas?|beige|hueso|marfil' => '#f3e6c4', 'salmon' => '#fa8f72', 'ocre' => '#c98b2b', 'caqui|kaki' => '#b5a36b',
     ];
@@ -47,7 +47,7 @@ final class Chaquetilla
 
     /**
      * Chaquetilla oficial del hipódromo según el número del mandil, para los studs que no figuran en el Stud Book.
-     * Copiadas tal cual de la lista oficial (la 6 lleva mangas y gorra verdes, y la 10 y la 17 son iguales).
+     * Según la lista oficial (la 17 es de un violeta más claro que la 10).
      */
     public const OFICIALES = [
         1 => 'Rojo y blanco en mitades horizontales, mangas y gorra rojas',
@@ -55,7 +55,7 @@ final class Chaquetilla
         3 => 'Azul y blanco en mitades horizontales, mangas y gorra azules',
         4 => 'Oro y negro en mitades horizontales, mangas y gorra oro',
         5 => 'Verde y blanco en mitades horizontales, mangas y gorra verdes',
-        6 => 'Negro y amarillo en mitades horizontales, mangas y gorra verdes',
+        6 => 'Negro y amarillo en mitades horizontales, mangas y gorra negras',
         7 => 'Naranja y negro en mitades horizontales, mangas y gorra naranja',
         8 => 'Rosado y negro en mitades horizontales, mangas y gorra rosado',
         9 => 'Turquesa y negro en mitades horizontales, mangas y gorra turquesa',
@@ -66,7 +66,7 @@ final class Chaquetilla
         14 => 'Granate y oro en mitades horizontales, mangas y gorra granate',
         15 => 'Caqui y blanco en mitades horizontales, mangas y gorra caqui',
         16 => 'Azul y amarillo en mitades horizontales, mangas y gorra azules',
-        17 => 'Violeta y blanco en mitades horizontales, mangas y gorra violetas',
+        17 => 'Violeta claro y blanco en mitades horizontales, mangas y gorra violeta claro',
         18 => 'Verde claro y blanco en mitades horizontales, mangas y gorra verde claro',
         19 => 'Azul y rosado en mitades horizontales, mangas y gorra azules',
         20 => 'Marrón y amarillo en mitades horizontales, mangas y gorra marrones',
