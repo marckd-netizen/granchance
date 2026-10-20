@@ -46,6 +46,7 @@ function procesarReunion(Cliente $cli, ParserResultados $parser, Repositorio $re
             registro("$fecha $hip: sin resultados ({$d['detalle']})");
         } else {
             $carreras = [];
+            $suspendidas = [];
             $total = $parser->cantidadCarreras($html);
             for ($n = 1; $n <= $total; $n++) {
                 $pagina = $n === 1 ? $html : $cli->resultado($fecha, $hip, $n, $usarCache);
@@ -53,7 +54,12 @@ function procesarReunion(Cliente $cli, ParserResultados $parser, Repositorio $re
                     continue;       // carrera suspendida
                 }
                 $d['bytes'] += strlen($pagina);
-                $carreras[] = $parser->carrera($pagina);
+                $c = $parser->carrera($pagina);
+                if ($c['suspendida']) {
+                    $suspendidas[] = $n;
+                    continue;
+                }
+                $carreras[] = $c;
             }
             $paginaParciales = $cli->parciales($fecha, $hip, $usarCache);
             $parciales = $paginaParciales === null ? [] : $parser->parciales($paginaParciales);
@@ -68,7 +74,11 @@ function procesarReunion(Cliente $cli, ParserResultados $parser, Repositorio $re
                     usleep(500000 * $intento);
                 }
             }
-            $d['detalle'] = sprintf('%d carreras, parciales de %d', count($carreras), count($parciales));
+            $d['detalle'] = sprintf('%d carreras, parciales de %d', count($carreras), count($parciales))
+                . ($suspendidas === [] ? '' : ', suspendidas: ' . implode(' ', $suspendidas));
+            if ($carreras === []) {
+                $d['estado'] = 'vacio';     // reunión suspendida después de la primera carrera o entera
+            }
             registro("$fecha $hip: {$d['detalle']}");
         }
     } catch (\Throwable $e) {

@@ -75,6 +75,12 @@ final class Repositorio
             foreach ($carreras as $c) {
                 $this->guardarCarrera($reunionId, $c, $parciales[$c['numero']] ?? []);
             }
+            // Carreras que ya no figuran (suspendidas): se borran con su detalle.
+            $numeros = array_map(fn($c) => (int)$c['numero'], $carreras) ?: [0];
+            $this->db->prepare('DELETE FROM carrera WHERE reunion_id = ? AND numero NOT IN (' . implode(',', $numeros) . ')')->execute([$reunionId]);
+            if ($carreras === []) {
+                $this->db->prepare('DELETE FROM reunion WHERE id = ?')->execute([$reunionId]);
+            }
             $this->db->commit();
             return count($carreras);
         } catch (\Throwable $e) {
@@ -167,9 +173,12 @@ final class Repositorio
     }
 
     /** @return list<string> códigos de caballos sin ficha leída */
-    public function caballosSinFicha(int $limite): array
+    public function caballosSinFicha(int $limite, int $parte = 0, int $partes = 1): array
     {
-        $st = $this->db->query("SELECT codigo_hkjc FROM caballo WHERE ficha_en IS NULL AND codigo_hkjc LIKE 'HK\\_%' ORDER BY id LIMIT " . $limite);
+        $st = $this->db->query(sprintf(
+            "SELECT codigo_hkjc FROM caballo WHERE ficha_en IS NULL AND codigo_hkjc LIKE 'HK\\_%%' AND id %% %d = %d ORDER BY id LIMIT %d",
+            max(1, $partes), $parte, $limite
+        ));
         return $st->fetchAll(PDO::FETCH_COLUMN);
     }
 

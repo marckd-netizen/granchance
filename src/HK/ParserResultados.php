@@ -79,6 +79,7 @@ final class ParserResultados
             'clase' => null, 'rating' => null, 'condicion' => null, 'bolsa' => null, 'bolsa_detalle' => null,
             'tiempo_ganador' => null, 'tiempo_ganador_seg' => null, 'parciales' => null, 'parciales_tramos' => [],
             'retirados' => null, 'comentario' => null, 'actuaciones' => [], 'apuestas' => [], 'padre_ganador' => null, 'madre_ganador' => null,
+            'suspendida' => str_contains($html, 'This race has been abandoned or not offered'),
         ];
 
         $acum = [];
@@ -140,6 +141,8 @@ final class ParserResultados
         }
         $c['retirados'] = $retirados === [] ? null : implode(' ', $retirados);
 
+        // Suspendida: el aviso del HKJC o, en algunas, solo "RACE N (0)" sin tiempos.
+        $c['suspendida'] = $c['suspendida'] || ($c['tiempo_ganador'] === null && array_filter($c['actuaciones'], fn($a) => $a['tiempo'] !== null) === []);
         $c['apuestas'] = $this->dividendos($x);
         // Racing Incident Report: hasta ~2024 es un texto corrido; después, una fila por caballo.
         $porCaballo = [];
