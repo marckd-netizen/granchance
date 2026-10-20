@@ -65,7 +65,7 @@ final class Rankings
         $extra = in_array($de, ['caballos', 'potrillos'], true) ? ', MAX(ca.sexo) AS sexo, MAX(ca.pelaje) AS pelaje, MAX(ca.anio_nac) AS anio_nac, MAX(ca.pais) AS pais' : '';
         $st = $this->db->prepare("SELECT $grupo AS clave, MAX($nombre) AS nombre, COUNT(*) AS corridas, SUM(a.puesto = 1) AS ganadas,
                 SUM(a.puesto BETWEEN 1 AND 3) AS top3, COUNT(DISTINCT a.caballo_id) AS caballos, MAX(r.fecha) AS ultima,
-                AVG(CASE WHEN a.tiempo_seg > 0 AND c.distancia > 0 THEN c.distancia / a.tiempo_seg * 3.6 END) AS vel $extra
+                AVG(CASE WHEN a.tiempo_seg > 0 AND c.distancia / a.tiempo_seg * 3.6 BETWEEN 20 AND 80 THEN c.distancia / a.tiempo_seg * 3.6 END) AS vel $extra
             FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id JOIN caballo ca ON ca.id = a.caballo_id $joinPersona
             WHERE $grupo IS NOT NULL AND $grupo <> '' AND $where
             GROUP BY $grupo HAVING COUNT(*) >= ?");
