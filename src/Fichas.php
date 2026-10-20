@@ -134,9 +134,8 @@ final class Fichas
             $o .= '</div>';
         }
         $o .= self::resumen($corridas);
-        if ($proximas) {
-            $o .= '<h2>Próximas carreras</h2>' . $this->tablaProximas($proximas, $tipo);
-        }
+        $o .= '<h2>Próximas carreras</h2>' . ($proximas ? $this->tablaProximas($proximas, $tipo)
+            : '<p class="nota">No figura en los programas publicados (salen hasta 15 días antes de cada reunión).</p>');
         if ($corridas) {
             // Lado a lado solo en la ficha del caballo: las de jockeys y cuidadores tienen muchas filas y montos grandes.
             $o .= '<div class="' . ($tipo === 'caballo' ? 'dos' : 'una') . '"><div><h2>Puestos por año</h2>' . self::tablaPuestos($corridas, fn ($a) => substr($a['fecha'], 0, 4), 'Año') . '</div>'
@@ -154,8 +153,8 @@ final class Fichas
             $o .= '<p class="nota">Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), según la condición; si la condición no trae el detalle, '
                 . 'se estima con el reparto habitual de la bolsa. ' . (in_array($tipo, ['jockey', 'cuidador'], true) ? 'Son los premios de los caballos, no la parte del ' . $tipo . '.' : '')
                 . ($tipo === 'criador' ? 'Son las carreras y los premios de los caballos que crió.' : '') . '</p>';
-        } elseif (!$proximas) {
-            $o .= '<p>No tiene carreras registradas.</p>';
+        } else {
+            $o .= '<p>No tiene carreras corridas registradas.</p>';
         }
         return $this->documento($titulo . ' · ' . self::TIPOS[$tipo], $o);
     }
@@ -356,7 +355,7 @@ final class Fichas
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
         $o = '<div class="ancha"><table class="corridas"><thead><tr><th>Fecha</th><th>Hora</th><th>Hip.</th><th>Carrera</th><th>Dist.</th><th>Nº</th>'
             . implode('', array_map(fn ($c) => '<th>' . self::TIPOS[$c] . '</th>', array_diff(self::COLUMNAS[$tipo], ['criador'])))
-            . '<th>Kg</th></tr></thead><tbody>';
+            . '<th>Kg</th><th></th></tr></thead><tbody>';
         foreach ($lista as $i) {
             $clave = $i['fecha'] . '_' . $i['hipodromo_id'];
             $carrera = $i['carrera'] . 'ª ' . $e($i['nombre_carrera']);
@@ -368,9 +367,28 @@ final class Fichas
                 . ProgramaNoOficial::nombreHipodromo((int)$i['hipodromo_id']) . '</td><td class="nom">' . $carrera . '</td><td>' . $e($i['distancia']) . '</td><td>' . $e($i['mandil']) . '</td>'
                 . implode('', array_map(fn ($c) => '<td>' . ($c === 'jockey' && $i['retirado'] ? 'No correrá' : ($c === 'jockey' && !$i['jockey'] ? 'a confirmar'
                     : $this->enlace($c, $i[$c . '_id'], $i[$c]))) . '</td>', array_diff(self::COLUMNAS[$tipo], ['criador'])))
-                . '<td>' . ($i['peso'] !== null ? number_format((float)$i['peso'], 1, ',', '.') : '') . '</td></tr>';
+                . '<td>' . ($i['peso'] !== null ? number_format((float)$i['peso'], 1, ',', '.') : '') . '</td><td>' . $this->calendario($i) . '</td></tr>';
         }
         return $o . '</tbody></table></div>';
+    }
+
+    /** 📅 que agrega la carrera a Google Calendar (5 minutos), como en el programa; nada si todavía no tiene hora. */
+    private function calendario(array $i): string
+    {
+        if ($i['retirado'] || !preg_match('/^(\d{2}):(\d{2})$/', (string)$i['hora'], $m) || (int)$m[1] < 8) {
+            return '';
+        }
+        $zona = new \DateTimeZone('America/Montevideo');
+        $inicio = (new \DateTimeImmutable($i['fecha'], $zona))->setTime((int)$m[1], (int)$m[2]);
+        $url = Publicador::enlaceGoogle([
+            'titulo' => sprintf('%dª %s · %s', $i['carrera'], Publicador::sigla((int)$i['hipodromo_id']), $i['caballo']),
+            'inicio' => $inicio,
+            'fin' => $inicio->modify('+5 minutes'),
+            'lugar' => ProgramaNoOficial::nombreHipodromo((int)$i['hipodromo_id']),
+            'detalle' => trim(($i['nombre_carrera'] ?? '') . ($i['distancia'] ? " · {$i['distancia']} m" : '') . ($i['jockey'] ? " · Jockey: {$i['jockey']}" : ''))
+                . "\nhttps://granchance.com/programas/{$i['fecha']}_{$i['hipodromo_id']}.html#carrera-{$i['carrera']}",
+        ]);
+        return '<a class="cal" href="' . htmlspecialchars($url, ENT_QUOTES) . '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅</a>';
     }
 
     private function enlace(string $tipo, int|string|null $id, ?string $nombre): string
@@ -470,6 +488,7 @@ tr.retirado td { text-decoration:line-through; color:var(--suave); }
 .filtro a { border:1px solid var(--linea); border-radius:14px; padding:2px 10px; background:var(--cabecera); }
 .filtro a.actual { background:var(--acento); color:var(--fondo); }
 .chaquetilla svg { vertical-align:middle; }
+a.cal { text-decoration:none; font-size:15px; }
 .resultados { padding-left:18px; } .resultados li { margin:3px 0; }
 CSS;
 }

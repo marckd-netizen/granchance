@@ -52,8 +52,8 @@ final class Publicador
         }
         $prog = (new ParserPrograma())->parsearArchivo($d['archivo']);
         $borrados = $this->borrados->deReunion($hip, $fecha);
-        // El programa preliminar pone "No Correrá" en la columna del jockey de todos (todavía no hay montas): corren todos.
-        $preliminar = self::sinHorario(array_column($prog['carreras'], null, 'numero'));
+        // El programa preliminar pone "No Correrá" en la columna del jockey de casi todos (todavía no hay montas): corren todos.
+        $preliminar = self::preliminar(array_column($prog['carreras'], null, 'numero'));
         foreach ($prog['carreras'] as &$c) {
             foreach ($c['caballos'] as &$h) {
                 if ($preliminar) {
@@ -104,7 +104,7 @@ final class Publicador
     {
         $res = [];
         // Del programa preliminar al definitivo: un solo aviso en vez de una hora nueva por carrera.
-        $horario = self::sinHorario($antes) && !self::sinHorario($ahora);
+        $horario = self::preliminar($antes) && !self::preliminar($ahora);
         if ($horario) {
             $res[] = [array_key_first($ahora), null, 'Se publicó el programa definitivo, con horarios y montas'];
         }
@@ -126,7 +126,7 @@ final class Publicador
                 }
                 if ($x['corre'] && !$h['corre']) {
                     $res[] = [$n, $num, "$quien no correrá" . ($h['borrado'] ? " (borrado: {$h['borrado']})" : '')];
-                } elseif (!$x['corre'] && $h['corre'] && !self::sinHorario($antes)) {
+                } elseif (!$x['corre'] && $h['corre'] && !self::preliminar($antes)) {
                     $res[] = [$n, $num, "$quien vuelve a figurar para correr"];
                 }
                 if ($h['corre'] && $x['corre'] && $x['jockey'] && $h['jockey'] && Personas::jockey($x['jockey']) !== Personas::jockey($h['jockey'])) {
@@ -207,15 +207,17 @@ final class Publicador
         if (is_file("{$this->carpeta}/resultados/$clave.html")) {
             $o .= ' · <a href="../resultados/' . $clave . '.html">Predicción vs resultado</a>';
         }
-        $preliminar = self::sinHorario(array_column($p['carreras'], null, 'numero'));
-        if (!$preliminar) {
+        $sinHora = self::sinHorario(array_column($p['carreras'], null, 'numero'));
+        $preliminar = $sinHora || self::sinMontas($p['carreras']);
+        if (!$sinHora) {
             $o .= ' · <a href="../calendario/' . $clave . '.ics">Agregar las carreras al calendario</a>';
         }
         $o .= ' <small>Actualizado el ' . date('d/m H:i') . '</small></div>';
         $barra = $o;
         $o = '';
         if ($preliminar) {
-            $o .= '<div class="gc-aviso"><b>Programa preliminar.</b> Todavía no tiene horarios ni montas: se completan solos cuando HRU publique el programa definitivo.</div>';
+            $o .= '<div class="gc-aviso"><b>Programa preliminar.</b> Todavía no tiene ' . ($sinHora ? 'horarios ni montas' : 'montas')
+                . ': se completan solos cuando HRU publique el programa definitivo.</div>';
         }
         if ($borrados) {
             $st = $this->db->prepare('SELECT MAX(leido_en) FROM borrado WHERE hipodromo_id = ? AND fecha = ?');
@@ -247,10 +249,12 @@ final class Publicador
             $html = preg_replace('/(<section class="carrera" id="carrera-' . $n . '"><h2>.*?)<\/h2>/s',
                 '$1 <a class="gc-cal" href="' . $e(self::enlaceGoogle($ev)) . '" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅</a></h2>', $html, 1);
         }
-        if ($preliminar) {
+        if ($sinHora) {
             // Las horas de relleno no se muestran.
             $html = preg_replace('/(<h2>\d+ª carrera) · \d{1,2}:\d{2} ·/u', '$1 · hora a confirmar ·', $html);
             $html = preg_replace('/(ª) <small>0\d:\d{2}<\/small><\/a>/u', '$1</a>', $html);
+        }
+        if ($preliminar) {
             $html = str_replace('Jockey:  · ', 'Jockey: a confirmar · ', $html);
         }
         $html = $this->enlazarFichas($html, $p);
@@ -367,6 +371,30 @@ final class Publicador
      * las 02:00, y así. Si todas las carreras tienen esa hora, el programa todavía no tiene horario.
      * @param array<int, array{hora:?string}> $carreras número de carrera => carrera
      */
+    /**
+     * Ningún caballo tiene jockey: el programa preliminar pone "No Correrá" en esa columna (a veces con horarios ya
+     * tentativos). Sirve tanto para las carreras del programa como para las de una firma.
+     */
+    public static function sinMontas(array $carreras): bool
+    {
+        $hay = false;
+        foreach ($carreras as $c) {
+            foreach ($c['caballos'] as $h) {
+                if (!empty($h['jockey'])) {
+                    return false;
+                }
+                $hay = true;
+            }
+        }
+        return $hay;
+    }
+
+    /** Programa preliminar: sin horario o sin montas. */
+    public static function preliminar(array $carreras): bool
+    {
+        return self::sinHorario($carreras) || self::sinMontas($carreras);
+    }
+
     public static function sinHorario(array $carreras): bool
     {
         foreach ($carreras as $n => $c) {
@@ -377,7 +405,7 @@ final class Publicador
         return (bool)$carreras;
     }
 
-    private static function enlaceGoogle(array $ev): string
+    public static function enlaceGoogle(array $ev): string
     {
         return 'https://calendar.google.com/calendar/render?' . http_build_query([
             'action' => 'TEMPLATE',
@@ -761,7 +789,7 @@ final class Publicador
             . "<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '$id');</script>";
     }
 
-    private static function sigla(int $id): string
+    public static function sigla(int $id): string
     {
         return [1 => 'MRÑ', 4 => 'COL', 8 => 'FLO', 9 => 'FDA', 13 => 'LPD', 16 => 'MEL', 21 => 'PAY', 22 => 'ROC'][$id] ?? (string)$id;
     }
