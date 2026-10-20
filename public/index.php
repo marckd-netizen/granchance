@@ -74,6 +74,8 @@ a { color:var(--acento); text-decoration:none; } a:hover { text-decoration:under
 table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
 td { border-bottom:1px solid var(--linea); padding:5px 6px; vertical-align:baseline; }
 td:first-child { white-space:nowrap; width:9em; } td:nth-child(2) { width:9em; }
+.buscar input { font:inherit; padding:4px 8px; border:1px solid var(--linea); border-radius:6px; background:var(--fondo); color:var(--texto); min-width:240px; }
+.buscar button { font:inherit; padding:4px 10px; border:1px solid var(--linea); border-radius:6px; background:var(--cabecera); color:var(--texto); }
 .filtro { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
 .filtro a { border:1px solid var(--linea); border-radius:14px; padding:2px 10px; background:var(--cabecera); }
 .filtro a.actual { background:var(--acento); color:var(--fondo); }
@@ -85,6 +87,7 @@ details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:1
 <h1>GranChance<?= $filtro !== null ? ' · ' . $e($hips[$filtro]) : '' ?></h1>
 <p>Programas no oficiales de los hipódromos de Uruguay: antecedentes con velocidades corregidas por pista y viento, índices contra el par de cada categoría y probabilidad de ganar. Después de cada reunión, la predicción comparada con el resultado. <a href="resultados/estadisticas.html">Acierto acumulado</a>.</p>
 <p><small>Carreras en tu calendario: cada carrera del programa tiene un 📅 para agregarla a Google Calendar, y arriba un enlace para agregar todas las de la reunión. Para tenerlas todas siempre al día, en Google Calendar elegí «Otros calendarios › Desde URL» y pegá <code>https://granchance.com/calendario.ics</code>.</small></p>
+<form class="buscar" action="buscar"><input name="q" placeholder="Buscar caballo, jockey o cuidador"> <button>Buscar</button></form>
 <?php if ($hips): ?>
 <div class="filtro"><a href="./"<?= $filtro === null ? ' class="actual"' : '' ?>>Todos</a><?php foreach ($hips as $id => $n): ?><a href="hipodromo-<?= $slug($n) ?>"<?= $filtro === $id ? ' class="actual"' : '' ?>><?= $e($n) ?></a><?php endforeach ?></div>
 <?php endif ?>

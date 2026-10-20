@@ -99,12 +99,19 @@ if (!isset($opc['sin-resultados']) && !isset($opc['borrados'])) {
     }
 }
 $pub->indice();
-// Si la web se publica en otra carpeta (public_html en cPanel), se le copia la portada. El .htaccess no se pisa
+// Si la web se publica en otra carpeta (public_html en cPanel), se le copian la portada y las fichas. El .htaccess no se pisa
 // (cPanel guarda ahí la versión de PHP): se le agregan nuestras líneas entre marcas, una sola vez.
 $destino = realpath($config['carpeta_publica'] ?? __DIR__ . '/../public');
 if ($destino !== realpath(__DIR__ . '/../public')) {
-    if (!is_file("$destino/index.php") || md5_file(__DIR__ . '/../public/index.php') !== md5_file("$destino/index.php")) {
-        copy(__DIR__ . '/../public/index.php', "$destino/index.php");
+    foreach (['index.php', 'ficha.php'] as $f) {
+        if (!is_file("$destino/$f") || md5_file(__DIR__ . "/../public/$f") !== md5_file("$destino/$f")) {
+            copy(__DIR__ . "/../public/$f", "$destino/$f");
+        }
+    }
+    // ficha.php lee la base: con esto encuentra el proyecto (vendor/ y config.php), que queda fuera de public_html.
+    $ruta = "<?php\nreturn " . var_export(realpath(__DIR__ . '/..'), true) . ";\n";
+    if (!is_file("$destino/.granchance.php") || file_get_contents("$destino/.granchance.php") !== $ruta) {
+        file_put_contents("$destino/.granchance.php", $ruta);
     }
     $actual = is_file("$destino/.htaccess") ? (string)file_get_contents("$destino/.htaccess") : '';
     $nuestro = "# BEGIN GranChance\n" . trim((string)file_get_contents(__DIR__ . '/../public/.htaccess')) . "\n# END GranChance\n";

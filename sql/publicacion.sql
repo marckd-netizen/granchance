@@ -52,3 +52,26 @@ CREATE TABLE IF NOT EXISTS borrado (
   leido_en      DATETIME NOT NULL,
   PRIMARY KEY (hipodromo_id, fecha, carrera, mandil)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Inscriptos de cada programa publicado, con el caballo, jockey y cuidador identificados en la base cuando se puede:
+-- las fichas (public/ficha.php) muestran con esto las próximas carreras.
+CREATE TABLE IF NOT EXISTS inscripcion (
+  hipodromo_id   SMALLINT UNSIGNED NOT NULL,
+  fecha          DATE NOT NULL,
+  carrera        TINYINT UNSIGNED NOT NULL,
+  mandil         VARCHAR(4) NOT NULL,
+  caballo_id     INT UNSIGNED NULL,
+  caballo        VARCHAR(60) NOT NULL,
+  jockey_id      INT UNSIGNED NULL,
+  jockey         VARCHAR(120) NULL,
+  cuidador_id    INT UNSIGNED NULL,
+  cuidador       VARCHAR(120) NULL,
+  peso           DECIMAL(4,1) NULL,
+  hora           VARCHAR(5) NULL,
+  nombre_carrera VARCHAR(150) NULL,
+  distancia      SMALLINT UNSIGNED NULL,
+  superficie     VARCHAR(10) NULL,
+  retirado       TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (hipodromo_id, fecha, carrera, mandil),
+  KEY (caballo_id), KEY (jockey_id), KEY (cuidador_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -52,8 +52,13 @@ final class Publicador
         }
         $prog = (new ParserPrograma())->parsearArchivo($d['archivo']);
         $borrados = $this->borrados->deReunion($hip, $fecha);
+        // El programa preliminar pone "No Correrá" en la columna del jockey de todos (todavía no hay montas): corren todos.
+        $preliminar = self::sinHorario(array_column($prog['carreras'], null, 'numero'));
         foreach ($prog['carreras'] as &$c) {
             foreach ($c['caballos'] as &$h) {
+                if ($preliminar) {
+                    $h['retirado'] = false;
+                }
                 $b = $borrados[$c['numero'] . '-' . strtoupper((string)$h['numero'])] ?? null;
                 if ($b && !$h['retirado']) {
                     $h['retirado'] = true;
@@ -67,6 +72,7 @@ final class Publicador
         $cambios = $this->registrarCambios($hip, $fecha, self::firma($prog));
         $p = $this->gen->armar($prog, $hip, $fecha, $distancias);
         $this->guardarPredicciones($p);
+        $this->fichas()->guardarInscripciones($p);
 
         $fechas = $this->fechasPublicadas();
         $fechas[$fecha] = array_values(array_unique(array_merge($fechas[$fecha] ?? [], [$hip])));
@@ -120,7 +126,7 @@ final class Publicador
                 }
                 if ($x['corre'] && !$h['corre']) {
                     $res[] = [$n, $num, "$quien no correrá" . ($h['borrado'] ? " (borrado: {$h['borrado']})" : '')];
-                } elseif (!$x['corre'] && $h['corre']) {
+                } elseif (!$x['corre'] && $h['corre'] && !self::sinHorario($antes)) {
                     $res[] = [$n, $num, "$quien vuelve a figurar para correr"];
                 }
                 if ($h['corre'] && $x['corre'] && $x['jockey'] && $h['jockey'] && Personas::jockey($x['jockey']) !== Personas::jockey($h['jockey'])) {
@@ -245,7 +251,9 @@ final class Publicador
             // Las horas de relleno no se muestran.
             $html = preg_replace('/(<h2>\d+ª carrera) · \d{1,2}:\d{2} ·/u', '$1 · hora a confirmar ·', $html);
             $html = preg_replace('/(ª) <small>0\d:\d{2}<\/small><\/a>/u', '$1</a>', $html);
+            $html = str_replace('Jockey:  · ', 'Jockey: a confirmar · ', $html);
         }
+        $html = $this->enlazarFichas($html, $p);
         $html = preg_replace('/<\/head>/', self::analytics($this->analytics) . '</head>', $html, 1);
         // La navegación del programa queda fija arriba (y sube 16px): la barra va dentro de ella para que no la tape,
         // y los avisos justo debajo.
@@ -256,6 +264,63 @@ final class Publicador
             $html = preg_replace('/<body>/', '<body>' . $barra . $o, $html, 1);
         }
         return str_replace('</body>', $js . '</body>', $html);
+    }
+
+    private ?Fichas $fichas = null;
+
+    private function fichas(): Fichas
+    {
+        return $this->fichas ??= new Fichas($this->db, $this->carpeta);
+    }
+
+    /**
+     * Enlaza en el programa cada caballo, jockey y cuidador con su ficha (/caballo/..., /jockey/..., /cuidador/...):
+     * el nombre en el título de cada caballo y en el resumen de la carrera, y el jockey y el cuidador debajo.
+     */
+    private function enlazarFichas(string $html, array $p): string
+    {
+        $enlaces = $this->fichas()->enlacesPrograma((int)$p['hipodromo'], $p['fecha']);
+        $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
+        $a = fn (?string $url, string $texto) => $url ? '<a class="ficha" href="' . $e($url) . '">' . $texto . '</a>' : $texto;
+        foreach ($p['carreras'] as $c) {
+            $ini = strpos($html, '<section class="carrera" id="carrera-' . $c['numero'] . '">');
+            if ($ini === false) {
+                continue;
+            }
+            $fin = strpos($html, '</section>', $ini);
+            $fin = $fin === false ? strlen($html) : $fin;
+            $sec = substr($html, $ini, $fin - $ini);
+            foreach ($c['caballos'] as $h) {
+                $l = $enlaces[$c['numero'] . '-' . strtoupper((string)$h['numero'])] ?? null;
+                if (!$l) {
+                    continue;
+                }
+                $nro = '>' . $e($h['numero']) . '</span>';
+                $nombre = $e($h['nombre']);
+                // Resumen: <td>mandil</td><td>nombre</td>
+                $sec = str_replace($nro . '</td><td>' . $nombre . '</td>', $nro . '</td><td>' . $a($l['caballo'], $nombre) . '</td>', $sec);
+                // Título del caballo y, en el párrafo que sigue, jockey y cuidador.
+                $pos = strpos($sec, $nro . ' ' . $nombre);
+                if ($pos === false) {
+                    continue;
+                }
+                $sec = substr_replace($sec, $nro . ' ' . $a($l['caballo'], $nombre), $pos, strlen($nro . ' ' . $nombre));
+                $hasta = strpos($sec, '<div class="caballo', $pos + 1);
+                $largo = ($hasta === false ? strlen($sec) : $hasta) - $pos;
+                $bloque = substr($sec, $pos, $largo);
+                foreach (['jockey' => 'Jockey: ', 'cuidador' => 'Cuidador: '] as $k => $rotulo) {
+                    if ($h[$k] && $l[$k]) {
+                        $buscado = $rotulo . $e($h[$k]);
+                        if (($q = strpos($bloque, $buscado)) !== false) {
+                            $bloque = substr_replace($bloque, $rotulo . $a($l[$k], $e($h[$k])), $q, strlen($buscado));
+                        }
+                    }
+                }
+                $sec = substr_replace($sec, $bloque, $pos, $largo);
+            }
+            $html = substr_replace($html, $sec, $ini, $fin - $ini);
+        }
+        return $html;
     }
 
     // ---------------------------------------------------------------- calendario
@@ -438,7 +503,7 @@ final class Publicador
             $porNro[(int)$c['nro_oficial']] = $c;
             $porNumero[(int)$c['numero']] = $c;
         }
-        $act = $this->db->prepare('SELECT ca.nombre, a.puesto, a.puesto_texto, a.sport FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
+        $act = $this->db->prepare('SELECT ca.id, ca.nombre, a.puesto, a.puesto_texto, a.sport FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
                                    WHERE a.carrera_id = ? ORDER BY a.puesto IS NULL, a.puesto');
         $res = [];
         foreach ($pred as $n => $lista) {
@@ -560,9 +625,13 @@ final class Publicador
                 . ($ok ? ' <span class="ok">' . implode(' · ', array_map(fn ($x) => ['ganador' => '✔ ganador', 'exacta' => '✔ exacta', 'trifecta' => '✔ trifecta'][$x], $ok)) . '</span>' : '')
                 . '</h2><div class="dos"><table><thead><tr><th colspan="5">Programa no oficial</th></tr><tr><th>#</th><th>Nº</th><th>Caballo</th><th>Prob.</th><th>Llegó</th></tr></thead><tbody>';
             $i = 0;
+            $ficha = [];
+            foreach ($c['llegada'] as $a) {
+                $ficha[Personas::clave($a['nombre'])] = '<a class="ficha" href="' . $e(Fichas::url('caballo', (int)$a['id'], $a['nombre'])) . '">' . $e($a['nombre']) . '</a>';
+            }
             foreach ($c['prediccion'] as $p) {
                 $cls = !$p['corrio'] ? 'retirado' : ($p['puesto'] !== null && $p['puesto'] <= 3 ? 'podio p' . $p['puesto'] : '');
-                $o .= '<tr class="' . $cls . '"><td>' . ($p['corrio'] ? ++$i : '') . '</td><td>' . $e($p['mandil']) . '</td><td>' . $e($p['caballo']) . '</td><td>'
+                $o .= '<tr class="' . $cls . '"><td>' . ($p['corrio'] ? ++$i : '') . '</td><td>' . $e($p['mandil']) . '</td><td>' . ($ficha[Personas::clave($p['caballo'])] ?? $e($p['caballo'])) . '</td><td>'
                     . ($p['prob'] !== null ? number_format(100 * (float)$p['prob'], 0) . ' %' : '') . '</td><td>'
                     . (!$p['corrio'] ? 'no corrió' : ($p['puesto'] !== null ? $p['puesto'] . 'º' : '—')) . '</td></tr>';
             }
@@ -571,7 +640,7 @@ final class Publicador
                 $k = Personas::clave($a['nombre']);
                 $fav = $c['favorito'] && $a['nombre'] === $c['favorito']['nombre'];
                 $o .= '<tr class="' . ($a['puesto'] !== null && $a['puesto'] <= 3 ? 'podio p' . $a['puesto'] : '') . '"><td>' . $e($a['puesto_texto'] ?: $a['puesto']) . '</td><td>'
-                    . $e($c['mandil_de'][$k] ?? '') . '</td><td>' . $e($a['nombre']) . ($fav ? ' <small title="Favorito del público">(fav.)</small>' : '') . '</td><td>'
+                    . $e($c['mandil_de'][$k] ?? '') . '</td><td>' . $ficha[$k] . ($fav ? ' <small title="Favorito del público">(fav.)</small>' : '') . '</td><td>'
                     . ($a['sport'] > 0 ? number_format((float)$a['sport'], 2, ',', '.') : '') . '</td><td>' . (isset($c['orden_de'][$k]) ? $c['orden_de'][$k] . 'º' : '') . '</td></tr>';
             }
             $o .= '</tbody></table></div>';
@@ -702,6 +771,7 @@ final class Publicador
 .gc-barra a { color:var(--acento); text-decoration:none; font-weight:600; }
 .gc-aviso { border:1px solid var(--linea); border-left:4px solid var(--menos); border-radius:6px; padding:6px 10px; margin:6px 0; background:var(--cabecera); }
 .gc-aviso ul { margin:4px 0 0; padding-left:18px; } .gc-aviso a { color:var(--acento); }
+a.ficha { color:inherit; text-decoration:none; border-bottom:1px dotted currentColor; }
 .gc-cal { text-decoration:none; font-size:15px; margin-left:4px; }
 .nro-b { display:inline-block; min-width:18px; text-align:center; border-radius:4px; font-weight:700; border:1px solid var(--linea); text-decoration:line-through; }
 CSS;
