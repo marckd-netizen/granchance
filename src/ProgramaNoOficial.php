@@ -158,6 +158,7 @@ final class ProgramaNoOficial
         $rasgos = [];
         foreach ($c['distancia'] && $this->modelo ? $corren : [] as $i => $h) {
             $ant = array_map(fn ($a) => ['fecha' => $a['fecha'], 'indice' => $a['indice'], 'distancia' => (int)$a['distancia'],
+                'hipodromo' => (int)$a['hipodromo_id'],
                 'superficie' => $a['superficie'], 'puesto' => $a['puesto'] !== null ? (int)$a['puesto'] : null, 'nivel_par' => $a['nivel_par'],
                 'jockey' => Personas::jockey($a['jockey']), 'cuidador' => Personas::cuidador($a['cuidador']),
                 'mercado' => $a['sport'] > 0 && $a['suma_inversa'] ? 1 / $a['sport'] / $a['suma_inversa'] : null], $h['antecedentes']);

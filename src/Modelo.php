@@ -22,7 +22,8 @@ final class Modelo
         'ultimo_puesto', 'gano_ultima', 'cambio_categoria', 'kg_menos', 'gatera', 'mismo_jockey', 'mismo_cuidador',
         'jockey_gana', 'cuidador_gana', 'jockey_gana_tramo', 'cuidador_gana_tramo', 'jockey_place', 'cuidador_place', 'frente_rivales',
         'mercado_ultima', 'mercado_prom', 'sin_mercado', 'padre_gana', 'padre_place', 'padre_tramo', 'abuelo_gana', 'madre_gana', 'gatera_gana', 'gatera_place',
-        'jockey_extremo', 'cuidador_extremo', 'jockey_debut', 'cuidador_debut', 'padre_debut', 'madre_debut', 'abuelo_debut'];
+        'jockey_extremo', 'cuidador_extremo', 'jockey_debut', 'cuidador_debut', 'padre_debut', 'madre_debut', 'abuelo_debut',
+        'caballo_lugar'];
     public const MEDIA_VIDA = 5;            // carreras: cada 5 carreras hacia atrás el índice pesa la mitad
     private const MEDIA_VIDA_DIAS = 180;
     /**
@@ -137,7 +138,29 @@ final class Modelo
             'cuidador_extremo' => $e ? $this->tasa("ce|{$hoy['cuidador']}|$e", $t, 0) : 0.0,
             // Debutantes: cuánto ganan en el debut los caballos de ese jockey, ese cuidador, ese padre, esa madre y ese abuelo.
             ...$this->debut($ant ? null : $hoy, $t),
+            // Especialista en el hipódromo y la superficie de hoy (por ejemplo, el césped de Maroñas).
+            'caballo_lugar' => self::rindeLugar($ant, (int)$hoy['hipodromo'], $hoy['superficie']),
         ];
+    }
+
+    /**
+     * Cuánto se aparta el caballo de su propio promedio cuando corre en ese hipódromo y superficie (los índices ya están
+     * llevados a la misma escala), achicado hacia 0 si corrió pocas veces ahí.
+     */
+    private static function rindeLugar(array $ant, int $hip, string $sup): float
+    {
+        $prom = self::ponderado(array_values(array_filter(array_column($ant, 'indice'), fn ($v) => $v !== null)));
+        if ($prom === null) {
+            return 0.0;
+        }
+        $suma = $n = 0.0;
+        foreach ($ant as $a) {
+            if ($a['indice'] !== null && (int)($a['hipodromo'] ?? 0) === $hip && $a['superficie'] === $sup) {
+                $suma += $a['indice'] - $prom;
+                $n++;
+            }
+        }
+        return $suma / ($n + 3);
     }
 
     /** Menos de 900 m o más de 1600 m; null en el medio. */
@@ -386,7 +409,7 @@ final class Modelo
                 $hist[$f['caballo_id']] ??= [];
                 array_unshift($hist[$f['caballo_id']], ['carrera' => $f0['carrera_id'], 'fecha' => $f['fecha'], 'indice' => $f['indice'], 'distancia' => $f['dist'],
                     'superficie' => $f['sup'], 'puesto' => $f['puesto'], 'nivel_par' => $f['nivel_par'], 'jockey' => $f['jockey'], 'cuidador' => $f['cuidador'],
-                    'mercado' => $mercado[$f['caballo_id']]]);
+                    'hipodromo' => $f['hip'], 'mercado' => $mercado[$f['caballo_id']]]);
             }
         };
         foreach ($st as $f) {
