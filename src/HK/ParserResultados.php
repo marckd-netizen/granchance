@@ -20,6 +20,11 @@ final class ParserResultados
     public function calendario(string $html, int $anio, int $mes): array
     {
         $x = self::xpath($html);
+        // Un mes sin carreras (agosto, entre temporadas) muestra el calendario del mes siguiente.
+        $titulo = trim($x->evaluate('string(//table//thead//td[@colspan="7"])'));
+        if (!preg_match('#^(\d{1,2})/(\d{4})$#', $titulo, $mt) || (int)$mt[1] !== $mes || (int)$mt[2] !== $anio) {
+            return [];
+        }
         $reuniones = [];
         foreach ($x->query('//td[contains(concat(" ", @class, " "), " calendar ")]') as $td) {
             $dia = trim($x->evaluate('string(.//span[contains(@class,"f_fs14")])', $td));
