@@ -109,7 +109,7 @@ if ($destino !== realpath(__DIR__ . '/../public')) {
     $actual = is_file("$destino/.htaccess") ? (string)file_get_contents("$destino/.htaccess") : '';
     $nuestro = "# BEGIN GranChance\n" . trim((string)file_get_contents(__DIR__ . '/../public/.htaccess')) . "\n# END GranChance\n";
     $nuevo = preg_match('/# BEGIN GranChance.*?# END GranChance\n/s', $actual)
-        ? preg_replace('/# BEGIN GranChance.*?# END GranChance\n/s', $nuestro, $actual)
+        ? preg_replace_callback('/# BEGIN GranChance.*?# END GranChance\n/s', fn () => $nuestro, $actual)  // con callback: $nuestro trae "$1"
         : rtrim($actual) . ($actual !== '' ? "\n\n" : '') . $nuestro;
     if ($nuevo !== $actual) {
         file_put_contents("$destino/.htaccess", $nuevo);
