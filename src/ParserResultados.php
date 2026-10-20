@@ -99,7 +99,7 @@ final class ParserResultados
         }
         unset($carrera);
         foreach ($res['carreras'] as &$carrera) {
-            $carrera['actuaciones'] = self::corregirTiempos($carrera['actuaciones'], $carrera['tiempo_ganador_seg']);
+            $carrera['actuaciones'] = self::corregirTiempos($carrera['actuaciones'], $carrera['tiempo_ganador_seg'], $carrera['distancia']);
         }
         unset($carrera);
         return $res;
@@ -109,9 +109,24 @@ final class ParserResultados
      * El Excel trae a veces un tiempo imposible: la diferencia con el ganador en lugar del tiempo ("0'00''68" con 4
      * cuerpos), o un dígito mal ("0'00''77" por 0'36''73, "2'44''61" a 13 cuerpos).
      * Las planillas calculan el tiempo de cada uno como el del ganador más 0,17 s por cuerpo: un tiempo que se aparta
-     * más de 2 s de esa cuenta se reemplaza por ella (y queda "tiempo_excel" con el original).
+     * más de 2 s de esa cuenta se reemplaza por ella (y queda "tiempo_excel" con el original). Lo que igual quede fuera
+     * de 20 a 80 km/h (carreras sin tiempo del ganador, con las diferencias en lugar de los tiempos) queda sin tiempo.
      */
-    public static function corregirTiempos(array $actuaciones, ?float $tiempoGanador): array
+    public static function corregirTiempos(array $actuaciones, ?float $tiempoGanador, ?int $distancia = null): array
+    {
+        $actuaciones = self::corregirConCuerpos($actuaciones, $tiempoGanador);
+        foreach ($actuaciones as &$a) {
+            $kmh = $distancia && $a['tiempo_seg'] ? $distancia / $a['tiempo_seg'] * 3.6 : null;
+            if ($kmh !== null && ($kmh < 20 || $kmh > 80)) {
+                $a['tiempo_excel'] ??= $a['tiempo'];
+                [$a['tiempo'], $a['tiempo_seg']] = [null, null];
+            }
+        }
+        unset($a);
+        return $actuaciones;
+    }
+
+    private static function corregirConCuerpos(array $actuaciones, ?float $tiempoGanador): array
     {
         $fila = null;
         $bases = [];
