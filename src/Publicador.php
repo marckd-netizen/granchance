@@ -488,7 +488,7 @@ final class Publicador
     public static function medir(array $carreras): array
     {
         $m = ['carreras' => 0, 'ganador' => 0, 'place' => 0, 'ganador_top3' => 0, 'exacta' => 0, 'trifecta' => 0, 'favorito' => 0,
-            'retorno' => 0.0, 'aciertos' => []];
+            'retorno' => 0.0, 'retorno3' => 0.0, 'apostado3' => 0, 'aciertos' => []];
         foreach ($carreras as $c) {
             $top = array_slice($c['corrieron'], 0, 3);
             $ganador = $c['llegada'][0] ?? null;
@@ -503,6 +503,13 @@ final class Publicador
                 $m['ganador']++;
                 $m['retorno'] += (float)$top[0]['sport'];
                 $ok[] = 'ganador';
+            }
+            // $1 a ganador a cada uno de los 3 primeros del programa (2 si corrieron menos).
+            $m['apostado3'] += count($top);
+            foreach ($top as $t) {
+                if ($t['puesto'] === 1) {
+                    $m['retorno3'] += (float)$t['sport'];
+                }
             }
             if ($top[0]['puesto'] !== null && $top[0]['puesto'] <= 3) {
                 $m['place']++;
@@ -543,7 +550,7 @@ final class Publicador
         $o .= self::tablaAcierto([['', $r]], false);
         $o .= '<p class="nota">El orden es el del programa no oficial (probabilidad del modelo), contando solo a los que largaron. '
             . '<b>Exacta</b> y <b>trifecta</b>: los 2 o 3 primeros del programa llegaron 1º-2º o 1º-2º-3º, en cualquier orden. '
-            . '<b>Retorno</b>: lo que se cobraría apostando $1 a ganador al primero del programa en cada carrera.</p>';
+            . '<b>Retorno</b>: lo que se cobraría por cada $1 apostado a ganador al primero del programa en cada carrera, y apostando $1 a cada uno de los 3 primeros. Más de $1 es ganancia.</p>';
         foreach ($carreras as $c) {
             $car = $c['carrera'];
             $ok = $r['aciertos'][$c['numero']] ?? [];
@@ -626,7 +633,7 @@ final class Publicador
         }
         $o = $this->cabeceraHtml('Acierto acumulado') . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a></div><h1>Acierto del programa no oficial</h1>'
             . '<p class="nota">Primero del programa: cuántas veces ganó (y su % de carreras), llegó en el marcador o el ganador estaba entre los 3 primeros del programa. '
-            . 'Exacta y trifecta sin orden con los 2 y 3 primeros. Retorno por $1 apostado a ganador al primero del programa. Para comparar, cuántas veces ganó el favorito del público.</p>';
+            . 'Exacta y trifecta sin orden con los 2 y 3 primeros. Retorno por cada $1 apostado a ganador al primero del programa, y apostando $1 a cada uno de los 3 primeros (más de $1 es ganancia). Para comparar, cuántas veces ganó el favorito del público.</p>';
         krsort($grupos);
         foreach ($grupos as $tipo => $filas) {
             $o .= '<h2>' . htmlspecialchars($tipo) . '</h2>';
@@ -641,7 +648,7 @@ final class Publicador
     private static function sumar(array $rs): array
     {
         $t = ['reuniones' => count($rs)];
-        foreach (['carreras', 'ganador', 'place', 'ganador_top3', 'exacta', 'trifecta', 'favorito', 'retorno'] as $k) {
+        foreach (['carreras', 'ganador', 'place', 'ganador_top3', 'exacta', 'trifecta', 'favorito', 'retorno', 'retorno3', 'apostado3'] as $k) {
             $t[$k] = array_sum(array_column($rs, $k));
         }
         return $t;
@@ -652,13 +659,14 @@ final class Publicador
     {
         $pct = fn ($n, $d) => $d ? sprintf('%d <small>(%s %%)</small>', $n, number_format(100 * $n / $d, 1, ',', '.')) : '';
         $o = '<table class="acierto"><thead><tr>' . ($conEtiqueta ? '<th></th><th>Reuniones</th>' : '')
-            . '<th>Carreras</th><th>Ganó el 1º</th><th>1º en el marcador</th><th>Ganador entre los 3 primeros</th><th>Exacta</th><th>Trifecta</th><th>Retorno por $1</th><th>Ganó el favorito</th></tr></thead><tbody>';
+            . '<th>Carreras</th><th>Ganó el 1º</th><th>1º en el marcador</th><th>Ganador entre los 3 primeros</th><th>Exacta</th><th>Trifecta</th><th>Retorno por $1 al 1º</th><th>Retorno por $1 a los 3 primeros</th><th>Ganó el favorito</th></tr></thead><tbody>';
         foreach ($filas as [$etiqueta, $r]) {
             $n = $r['carreras'];
             $o .= '<tr>' . ($conEtiqueta ? '<td><b>' . htmlspecialchars($etiqueta) . '</b></td><td>' . $r['reuniones'] . '</td>' : '')
                 . '<td>' . $n . '</td><td>' . $pct($r['ganador'], $n) . '</td><td>' . $pct($r['place'], $n) . '</td><td>' . $pct($r['ganador_top3'], $n)
                 . '</td><td>' . $pct($r['exacta'], $n) . '</td><td>' . $pct($r['trifecta'], $n) . '</td><td>'
-                . ($n ? '$' . number_format($r['retorno'] / $n, 2, ',', '.') : '') . '</td><td>' . $pct($r['favorito'], $n) . '</td></tr>';
+                . ($n ? '$' . number_format($r['retorno'] / $n, 2, ',', '.') : '') . '</td><td>'
+                . (!empty($r['apostado3']) ? '$' . number_format($r['retorno3'] / $r['apostado3'], 2, ',', '.') : '') . '</td><td>' . $pct($r['favorito'], $n) . '</td></tr>';
         }
         return $o . '</tbody></table>';
     }
