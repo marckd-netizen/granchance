@@ -274,8 +274,9 @@ final class Publicador
     }
 
     /**
-     * Enlaza en el programa cada caballo, jockey y cuidador con su ficha (/caballo/..., /jockey/..., /cuidador/...):
-     * el nombre en el título de cada caballo y en el resumen de la carrera, y el jockey y el cuidador debajo.
+     * Enlaza en el programa cada caballo, jockey, cuidador y stud con su ficha (/caballo/..., /jockey/..., etc.):
+     * el nombre en el título de cada caballo y en el resumen de la carrera, y debajo el jockey, el cuidador, el stud y
+     * el criador (que el programa no trae: sale de la base).
      */
     private function enlazarFichas(string $html, array $p): string
     {
@@ -308,13 +309,17 @@ final class Publicador
                 $hasta = strpos($sec, '<div class="caballo', $pos + 1);
                 $largo = ($hasta === false ? strlen($sec) : $hasta) - $pos;
                 $bloque = substr($sec, $pos, $largo);
-                foreach (['jockey' => 'Jockey: ', 'cuidador' => 'Cuidador: '] as $k => $rotulo) {
+                foreach (['jockey' => 'Jockey: ', 'cuidador' => 'Cuidador: ', 'stud' => 'Stud: '] as $k => $rotulo) {
                     if ($h[$k] && $l[$k]) {
                         $buscado = $rotulo . $e($h[$k]);
                         if (($q = strpos($bloque, $buscado)) !== false) {
                             $bloque = substr_replace($bloque, $rotulo . $a($l[$k], $e($h[$k])), $q, strlen($buscado));
                         }
                     }
+                }
+                // El programa no trae el criador: va en la base, junto al caballo.
+                if ($l['criador'] && ($q = strpos($bloque, ' · Gatera: ')) !== false) {
+                    $bloque = substr_replace($bloque, ' · Criador: ' . $a($l['criador'][1], $e($l['criador'][0])), $q, 0);
                 }
                 $sec = substr_replace($sec, $bloque, $pos, $largo);
             }

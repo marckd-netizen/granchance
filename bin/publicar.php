@@ -22,6 +22,10 @@ use GranChance\{Borrados, Cliente, Modelo, ProgramaNoOficial, Publicador, Veloci
 $opc = opciones($argv);
 $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// inscripcion se rehace con cada programa: si es de una versión anterior (sin stud), se vuelve a crear.
+if ($db->query("SHOW TABLES LIKE 'inscripcion'")->fetchColumn() && !$db->query("SHOW COLUMNS FROM inscripcion LIKE 'stud_id'")->fetchColumn()) {
+    $db->exec('DROP TABLE inscripcion');
+}
 $db->exec(file_get_contents(__DIR__ . '/../sql/publicacion.sql'));
 
 $vel = new Velocidades($db);
