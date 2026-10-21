@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS persona (
   id      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   tipo    ENUM('jockey','cuidador','stud','criador') NOT NULL,
   nombre  VARCHAR(120) NOT NULL,                  -- como figura en los resultados ("Giannetti Adrian M.")
-  codigo  VARCHAR(20) NOT NULL,                   -- id del Stud Book (los criadores tienen un código alfanumérico)
+  codigo  VARCHAR(40) NOT NULL,                   -- id del Stud Book (los criadores tienen un código alfanumérico de 10 a 32 letras)
   slug    VARCHAR(120) NULL,                      -- nombre completo, del enlace: giannetti-adrian-maximiliano
   UNIQUE KEY (tipo, codigo),
   KEY (tipo, nombre)
