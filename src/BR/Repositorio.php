@@ -11,6 +11,7 @@ use PDO;
  */
 final class Repositorio
 {
+    private const METROS_CUERPO = 2.4;
     /** @var array<string, int> caché tipo|nombre => id */
     private array $personas = [];
     /** @var array<string, int> */
@@ -121,6 +122,11 @@ final class Repositorio
             }
         }
         $hora = $res['hora'] ?? $c['hora_programa'];
+        // El JCB publica solo el tiempo del ganador: el de los demás se estima con los cuerpos (un cuerpo = 2,4 m a la
+        // velocidad del ganador).
+        $tg = ParserResultados::segundos($ganador['posicion'] ?? null);
+        $dist = $c['distancia'] ?? $res['distancia'] ?? null;
+        $segCuerpo = $tg && $dist ? self::METROS_CUERPO * $tg / $dist : null;
         $retirados = array_map(fn($a) => $a['numero'], array_filter($c['actuaciones'], fn($a) => $a['forfait']));
 
         $this->db->prepare(
@@ -165,7 +171,7 @@ final class Repositorio
                 $lp !== null && $lp !== 1 ? $l['posicion'] : null,
                 $a['cuota'] ?? $l['cuota'] ?? null,
                 $lp === 1 ? $l['posicion'] : null,
-                $lp === 1 ? ParserResultados::segundos($l['posicion']) : null,
+                $lp === 1 ? $tg : ($lp !== null && $segCuerpo !== null && ($cp = ParserResultados::cuerpos($l['posicion'])) !== null ? round($tg + $cp * $segCuerpo, 2) : null),
                 !empty($l['favorito']) ? 1 : 0,
             ]);
         }

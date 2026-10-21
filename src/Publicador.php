@@ -847,13 +847,17 @@ final class Publicador
 
     public static function sigla(int $id): string
     {
-        return [1 => 'MRÑ', 4 => 'COL', 8 => 'FLO', 9 => 'FDA', 13 => 'LPD', 16 => 'MEL', 21 => 'PAY', 22 => 'ROC', 101 => 'ST', 102 => 'HV'][$id] ?? (string)$id;
+        return [1 => 'MRÑ', 4 => 'COL', 8 => 'FLO', 9 => 'FDA', 13 => 'LPD', 16 => 'MEL', 21 => 'PAY', 22 => 'ROC', 101 => 'ST', 102 => 'HV',
+            301 => 'GAV', 302 => 'CJ', 303 => 'CRI', 304 => 'TAR', 305 => 'MAD', 306 => 'SOR'][$id] ?? (string)$id;
     }
 
-    /** País de un hipódromo de la web: los de Hong Kong tienen número 101 (Sha Tin) y 102 (Happy Valley), ver HK\Publicador. */
+    /**
+     * País de un hipódromo de la web: los de Hong Kong tienen número 101 (Sha Tin) y 102 (Happy Valley), ver HK\Publicador;
+     * los de Brasil, 300 + su id en granchance_br, ver BR\Publicador.
+     */
     public static function pais(int $id): string
     {
-        return $id > 100 ? 'Hong Kong' : 'Uruguay';
+        return $id > 300 ? 'Brasil' : ($id > 100 ? 'Hong Kong' : 'Uruguay');
     }
 
     private static function kg(int|float|string|null $v): string

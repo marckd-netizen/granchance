@@ -212,6 +212,24 @@ final class ParserResultados
         return $s > 0 ? round($s, 2) : null;      // "0s c": sin tiempo
     }
 
+    /**
+     * Cuerpos al ganador: "3 3/4" → 3.75, "1/2" → 0.5, "Focinho"/"Mínima" → 0.05, "Cabeça" → 0.1, "Pescoço" → 0.25,
+     * "Paleta" → 0.5; null si no se puede medir ("Vários", "Desclas").
+     */
+    public static function cuerpos(?string $t): ?float
+    {
+        $t = trim((string)$t);
+        $fijos = ['Focinho' => 0.05, 'Foc.' => 0.05, 'Mínima' => 0.05, 'Mín.' => 0.05, 'Cabeça' => 0.1, 'Cab.' => 0.1,
+            'Pescoço' => 0.25, 'Pesc.' => 0.25, 'Paleta' => 0.5, 'Pal.' => 0.5];
+        if (isset($fijos[$t])) {
+            return $fijos[$t];
+        }
+        if ($t === '' || !preg_match('#^(\d+)?\s*(?:(\d)/(\d))?$#', $t, $m)) {
+            return null;
+        }
+        return (float)($m[1] ?? 0) + (isset($m[2]) && $m[2] !== '' ? (int)$m[2] / (int)$m[3] : 0.0);
+    }
+
     /** Año de nacimiento (generación): en Brasil los caballos cumplen años el 1º de julio. */
     public static function anioNacimiento(string $fecha, ?int $edad): int
     {
@@ -299,7 +317,7 @@ final class ParserResultados
 
     private static function idReunion(string $html): ?int
     {
-        return preg_match('/(?:resultadocompleto|resultadodasacumuladasespeciais|comparador|programa)\?idReuniao=(\d+)/', $html, $m) ? (int)$m[1] : null;
+        return preg_match('/(?:resultadocompleto|resultadodasacumuladasespeciais|parciaisdasacumuladas|comparador|programa)\?idReuniao=(\d+)/', $html, $m) ? (int)$m[1] : null;
     }
 
     private static function reales(string $t): ?float
