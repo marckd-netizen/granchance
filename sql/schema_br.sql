@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS actuacion (
   dist_acumulada  VARCHAR(20) NULL,               -- cuerpos al ganador, del resultado completo: "1/2", "3 3/4", "cab"
   cuota           DECIMAL(8,2) NULL,              -- "Rateio": dividendo a ganador por R$1 (cuota final)
   tiempo          VARCHAR(16) NULL,               -- solo el ganador
-  tiempo_seg      DECIMAL(7,2) NULL,
+  tiempo_seg      DECIMAL(7,2) NULL,              -- el del ganador; los demás, estimado con los cuerpos (2,4 m por cuerpo)
   favorito        TINYINT(1) NOT NULL DEFAULT 0,  -- marcado "Favorito" en el resultado completo
   PRIMARY KEY (carrera_id, caballo_id),
   KEY (caballo_id), KEY (jockey_id), KEY (cuidador_id), KEY (stud_id),

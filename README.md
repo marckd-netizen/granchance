@@ -156,6 +156,19 @@ de las próximas reuniones apenas el HKJC saca el Race Card (unos dos días ante
 retirados y cambios de jockey, hasta que larga la primera carrera (desde ahí la predicción queda congelada); el tercero
 reentrena el modelo de HK los lunes.
 
+Brasil (ver "Programa no oficial de Brasil"): crear la base `granchance_br`, cargar el respaldo (`granchance_br.sql.gz`),
+completar la sección `br` de `config.php` y, la primera vez, `php bin/br_modelo.php`. Después:
+
+```
+0 8 * * *   cd /home/USUARIO/granchance && php bin/br_diario.php && php bin/br_publicar.php >> raw/br/publicar.log 2>&1
+40 * * * *  cd /home/USUARIO/granchance && php bin/br_publicar.php >> raw/br/publicar.log 2>&1
+50 4 * * 1  cd /home/USUARIO/granchance && php bin/br_modelo.php >> raw/br/modelo.log 2>&1
+```
+
+El primero carga los resultados de los últimos días y publica su predicción vs resultado; el segundo publica los programas de
+las próximas reuniones apenas salen en el raceday del JCB (uno o dos días antes) y los actualiza cada hora con los forfaits y
+cambios de jóquei, hasta que larga el primer páreo; el tercero reentrena el modelo de Brasil los lunes.
+
 ## Hong Kong (HKJC: Sha Tin y Happy Valley)
 
 Baja los resultados oficiales de [racing.hkjc.com](https://racing.hkjc.com/en-us/local/information/localresults) a una base aparte,
@@ -270,3 +283,35 @@ Diferencias con Uruguay:
   `superficie` (césped, arena, sintética) y `pista` (leve, macia, pesada, encharcada; "variante" si se pasó a la arena), `recorde`,
   `condicion` (la chamada) y `comentario` (ocorrências y ocorrências veterinárias). Estreantes: `estreante` = 1, sin peso.
 - No publica bolsa, viento ni parciales (quedan NULL).
+- `tiempo_seg`: el JCB publica solo el tiempo del ganador; el de los demás se estima con los cuerpos al ganador (2,4 m por cuerpo,
+  a la velocidad del ganador). Sin cuerpos (los que llegaron después del 5º en los primeros años, "Vários") queda NULL.
+
+### Programa no oficial de Brasil
+
+El mismo programa y el mismo modelo que en Uruguay y Hong Kong, con los datos del JCB (`src/BR/Velocidades.php`,
+`src/BR/Modelo.php`, `src/BR/ProgramaNoOficial.php`, `src/BR/Publicador.php`).
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/br_modelo.php [--desde=2017-01-01] [--probar=AAAA-MM-DD]` | Calcula las velocidades y entrena el modelo con las carreras de Brasil; guarda los coeficientes en `modelo_coef` de `granchance_br`. Tarda un par de minutos. |
+| `php bin/br_programa.php --fecha=AAAA-MM-DD [--reunion=ID_JCB] [--salida=archivo.html]` | Baja el raceday de la reunión (sin `--reunion`, la primera brasileña de ese día) y arma el programa no oficial en `raw/br/programas/AAAA-MM-DD_<sigla>.html`. |
+| `php bin/br_publicar.php [--dias=3] [--fecha=AAAA-MM-DD --reunion=ID_JCB]` | Publica en la web (la carpeta de `bin/publicar.php`) los programas de las reuniones brasileñas del raceday de hoy a 3 días (hora de Brasília), guarda la predicción en `prediccion` de `granchance_br` (congelada desde el primer páreo), arma la predicción vs resultado de las reuniones ya cargadas y rehace `indice.json`. En la web cada hipódromo es 300 + su id en la base: Gávea 301, Cidade Jardim 302, Cristal 303, Tarumã 304, Madalena 305, Sorocaba 306 (`programas/2026-10-22_303.html`); la portada los muestra bajo Brasil. Si el mismo día hay dos reuniones en el mismo hipódromo (un páreo extra aparte), se publica la de más páreos. |
+
+Qué cambia respecto de Uruguay:
+
+- **Par** por hipódromo, distancia, superficie (césped, arena) y **nivel**: Grupo I/II/III, Listed, Claiming por categoría,
+  Índice Técnico, y en las comunes ("Normal") las victorias que permite la chamada (Normal 0 = perdedores, Normal 1...), con
+  los 4 primeros en pista macia. El programa del raceday no trae la chamada: las comunes de hoy se comparan con el par de todos
+  los niveles de la distancia.
+- **Ajustes**: el estado de la pista (leve, macia, pesada, encharcada, úmida) y, sobre eso, el **variante** (el páreo del césped
+  que se pasó a la arena). El JCB no publica el viento.
+- **Equivalencias**, con los caballos que corrieron en más de un hipódromo (Gávea = 0): Cidade Jardim +0,38 km/h, Cristal +0,46,
+  Tarumã −0,05.
+- **Modelo**: las mismas variables. El mercado sale del rateio a ganador; los kilos, del peso llevado (con el descargo del aprendiz);
+  la gatera es el número del caballo (el JCB no la publica aparte).
+- Entrenado con 2017 a octubre de 2024 y medido con las 3.891 carreras de octubre de 2024 a octubre de 2026: el de más
+  probabilidad gana el **33,2 %** (la proyección sola, 27,9 %; el favorito del rateio, 38,0 %). Exacta sin orden con sus 2
+  primeros, 36,8 %; trifecta sin orden, 12,2 % (en Brasil los lotes son chicos, de 6 a 8). Bien calibrado.
+- El programa muestra además el estreante, el aprendiz y su descargo, el peso del caballo y su cambio, el rateio de cada antecedente
+  y los cuerpos al ganador. Los caballos de una parelha llevan el mismo número.
+- Rankings: `/ranking/jockeys?pais=brasil` (y los demás). El JCB no publica la bolsa, así que no hay premios: se ordenan por ganadas.

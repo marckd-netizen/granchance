@@ -13,7 +13,8 @@ $meses = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 
 // Filtro por país (/pais-hong-kong, ?p=hong-kong) o por hipódromo (/hipodromo-rocha, ?h=rocha). Las direcciones viejas
 // (?hipodromo=22) redirigen a la nueva. Los índices de antes de Hong Kong no traen el país: son de Uruguay.
-$slug = fn (string $n) => trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(strtr($n, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n', 'Ñ' => 'n']))), '-');
+$slug = fn (string $n) => trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(strtr($n, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n', 'Ñ' => 'n',
+    'ã' => 'a', 'â' => 'a', 'à' => 'a', 'ê' => 'e', 'ô' => 'o', 'õ' => 'o', 'ç' => 'c', 'ü' => 'u']))), '-');
 $hips = [];
 $paises = [];       // país => [hipódromo => nombre], para el árbol
 foreach ($reuniones as &$r) {
@@ -110,7 +111,7 @@ details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:1
 </head>
 <body>
 <h1>GranChance<?= $titulo !== null ? ' · ' . $e($titulo) : '' ?></h1>
-<p>Programas no oficiales de los hipódromos de Uruguay y Hong Kong: antecedentes con velocidades corregidas por pista y viento, índices contra el par de cada categoría y probabilidad de ganar, generados objetivamente por modelos matemáticos.</p>
+<p>Programas no oficiales de los hipódromos de Uruguay, Brasil y Hong Kong: antecedentes con velocidades corregidas por pista y viento, índices contra el par de cada categoría y probabilidad de ganar, generados objetivamente por modelos matemáticos.</p>
 <p>Después de cada reunión, la predicción es comparada con el resultado, con total transparencia. <a href="resultados/estadisticas.html">Acierto acumulado</a> · <a href="ranking">Rankings</a>.</p>
 <p><small>Carreras en tu calendario: cada carrera del programa tiene un 📅 para agregarla a Google Calendar, y arriba un enlace para agregar todas las de la reunión. Para tenerlas todas siempre al día, en Google Calendar elegí «Otros calendarios › Desde URL» y pegá <code>https://granchance.com/calendario.ics</code>.</small></p>
 <form class="buscar" action="buscar"><input name="q" placeholder="Buscar caballo, jockey, cuidador, stud o criador"> <button>Buscar</button></form>
