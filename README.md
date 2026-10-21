@@ -97,7 +97,7 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 
 | Archivo | Qué es |
 |---|---|
-| `index.php` | Portada: próximas reuniones y reuniones pasadas por mes, con filtro por hipódromo. Lee `indice.json`. |
+| `index.php` | Portada: próximas reuniones y reuniones pasadas por mes, con un árbol país → hipódromos para filtrar (`/pais-uruguay`, `/pais-hong-kong`, `/hipodromo-sha-tin`). Lee `indice.json`. |
 | `programas/AAAA-MM-DD_<hip>.html` | Programa no oficial. Arriba, los borrados y los cambios detectados desde que se publicó. El calendario salta entre los programas publicados. |
 | `resultados/AAAA-MM-DD_<hip>.html` | Lo que decía el programa (orden por probabilidad) contra la llegada, carrera por carrera, con el acierto de la reunión. |
 | `ficha.php` | Fichas de caballos, jockeys, cuidadores, studs y criadores (`/caballo/123-nombre`, `/jockey/…`, `/cuidador/…`, `/stud/…`, `/criador/…`) y el buscador (`/buscar?q=`): todas las carreras corridas y las próximas (tabla `inscripcion`), premios cobrados, puestos por año y por distancia, con filtro por hipódromo. A diferencia de la portada, lee la base; en cPanel encuentra el proyecto con el `.granchance.php` que deja `publicar.php`. Los programas y resultados enlazan cada caballo, jockey, cuidador y stud con su ficha, y el programa suma el criador de cada caballo (sale de la base). |
@@ -141,3 +141,86 @@ Tablas nuevas en `sql/publicacion.sql` (las crea `bin/publicar.php`).
 
 El primero carga los resultados de ayer, publica su predicción vs resultado y relee los programas a 15 días; el segundo toma los
 borrados del día (solo actúa de 11 a 20 h, hora de Uruguay); el tercero reentrena el modelo los lunes.
+
+Hong Kong (ver "Programa no oficial de Hong Kong"): crear la base `granchance_hk`, cargar el respaldo (`granchance_hk.sql.gz`),
+completar la sección `hk` de `config.php` y, la primera vez, `php bin/hk_modelo.php`. Después:
+
+```
+30 7 * * *  cd /home/USUARIO/granchance && php bin/hk_diario.php && php bin/hk_publicar.php >> raw/hk/publicar.log 2>&1
+20 * * * *  cd /home/USUARIO/granchance && php bin/hk_publicar.php >> raw/hk/publicar.log 2>&1
+45 4 * * 1  cd /home/USUARIO/granchance && php bin/hk_modelo.php >> raw/hk/modelo.log 2>&1
+```
+
+El primero carga los resultados de la última reunión y publica su predicción vs resultado; el segundo publica los programas
+de las próximas reuniones apenas el HKJC saca el Race Card (unos dos días antes) y los actualiza cada hora con los
+retirados y cambios de jockey, hasta que larga la primera carrera (desde ahí la predicción queda congelada); el tercero
+reentrena el modelo de HK los lunes.
+
+## Hong Kong (HKJC: Sha Tin y Happy Valley)
+
+Baja los resultados oficiales de [racing.hkjc.com](https://racing.hkjc.com/en-us/local/information/localresults) a una base aparte,
+`granchance_hk`, con las mismas tablas que la de Uruguay y lo que solo publica el HKJC.
+
+```sh
+mysql -u root -p -e "CREATE DATABASE granchance_hk CHARACTER SET utf8mb4"
+mysql -u root -p granchance_hk < sql/schema_hk.sql
+# completar la sección 'hk' de config.php (ver config.example.php)
+```
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/hk_historico.php --desde=2015-01-01 [--hasta=AAAA-MM-DD]` | Lee el calendario oficial (Fixtures) mes a mes y baja cada reunión. Reanudable. Se puede correr en paralelo por tramos de años. |
+| `php bin/hk_diario.php [--dias=3]` | Vuelve a bajar las reuniones de los últimos días sin usar los crudos (correcciones, Incident Report definitivo). Para cron. |
+| `php bin/hk_caballos.php` | Completa país, pelaje, sexo, padre, madre, abuelo materno, tipo de importación y propietario con la ficha de cada caballo. |
+| `php bin/hk_parsear.php --fecha=2015-10-14 --hipodromo=HV [--carrera=1]` | Muestra en JSON lo que se lee de una carrera, sin tocar la base. |
+
+- No hace falta probar fecha por fecha: el calendario (`fixture?calyear=AAAA&calmonth=MM`, el mes con dos dígitos) marca cada día de carreras
+  con ST o HV, día o noche y césped, arena sintética o ambas. Una reunión anotada que no tiene resultados (suspendida por tifón) queda como "vacio".
+- Por reunión se piden la página de resultados de cada carrera (`localresults?racedate=AAAA/MM/DD&RaceNo=N`) y una sola página de
+  Sectional Time & Position con todas las carreras (`displaysectionaltime?racedate=DD/MM/AAAA&All=True`). Con 1 s entre pedidos, ~30 s por reunión.
+- Los crudos quedan en `raw/hk/AAAA/MM/AAAA-MM-DD_<ST|HV>/carrera_NN.html.gz` y `parciales.html.gz`, sin menús ni scripts (~9 KB cada uno).
+
+Diferencias con Uruguay:
+
+- `caballo` se identifica por el código del HKJC (`codigo_hkjc`, ej. `HK_2012_P420`), no por nombre, país y año. El HKJC no publica el año de nacimiento.
+- Pesos en libras como los publica el HKJC (`peso_asignado_lb`, `peso_caballo_lb`) y convertidos a kg en `peso_asignado` y `peso_caballo`.
+- `actuacion.cuota` es la cuota final a ganador (Win Odds); los dividendos por HK$10 están en `apuesta` (WIN, PLACE, QUINELLA, TIERCE, TRIO,
+  FIRST 4, QUARTET, DOUBLE, TREBLE, SIX UP...), con varias filas por tipo cuando corresponde (`orden`).
+- `actuacion.posiciones` (Running Position) y `dist_acumulada` (LBW, cuerpos al ganador). `dist_anterior` queda vacío: el HKJC no la publica.
+- `carrera.clase` (Class 1-5, Group One...), `rating` (banda, ej. 60-40), `recorrido` (riel "A", "C+3"...), `superficie` césped o sintética.
+- Solo HK: `carrera_parcial` (tiempo de cada tramo del puntero y acumulado) y `actuacion_parcial` (puesto, cuerpos detrás del puntero y
+  tiempo propio de cada caballo en cada tramo). En carreras recientes, también los parciales de 200 m dentro de los últimos tramos (`sub200`).
+- `carrera.comentario` es el Racing Incident Report; desde que el HKJC lo publica por caballo, también está en `actuacion.incidente`.
+- No publica en resultados: hora de la carrera, viento ni total apostado (quedan NULL).
+
+### Programa no oficial de Hong Kong
+
+El mismo programa y el mismo modelo que en Uruguay, con los datos del HKJC (`src/HK/Velocidades.php`, `src/HK/Modelo.php`,
+`src/HK/ProgramaNoOficial.php`). El logit (ajuste, calibración y medición) es común a los dos: `src/LogitCondicional.php`.
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/hk_modelo.php [--desde=2017-01-01] [--probar=AAAA-MM-DD]` | Calcula las velocidades y entrena el modelo con las carreras de HK; guarda los coeficientes en `modelo_coef` de `granchance_hk`. Tarda menos de un minuto. |
+| `php bin/hk_programa.php --fecha=AAAA-MM-DD --hipodromo=HV\|ST [--salida=archivo.html]` | Baja el Race Card de cada carrera (`racecard?racedate=...&Racecourse=HV&RaceNo=N`, queda en `raw/hk/.../programa_NN.html.gz`) y arma el programa no oficial en `raw/hk/programas/AAAA-MM-DD_<HV\|ST>.html`. El HKJC publica el programa dos días antes; conviene volver a correrlo el día de la reunión (retirados, cambios de jockey). |
+| `php bin/hk_publicar.php [--dias=4] [--fecha=AAAA-MM-DD --hipodromo=HV\|ST]` | Publica en la web (la carpeta de `bin/publicar.php`) los programas de las reuniones del calendario del HKJC de hoy a 4 días (hora de Hong Kong), guarda la predicción en `prediccion` de `granchance_hk` (congelada desde la primera carrera), arma la predicción vs resultado de las reuniones ya cargadas y rehace `indice.json`. En la web, Sha Tin es el hipódromo 101 y Happy Valley el 102 (`programas/2026-10-21_102.html`); la portada los muestra bajo Hong Kong y el acierto acumulado suma una fila por país. |
+
+Qué cambia respecto de Uruguay:
+
+- **Par** por hipódromo, distancia, superficie (césped o arena sintética) y **clase** (Class 1 a 5, G1/G2/G3, Griffin), con los 4
+  primeros en pista GOOD. No se separa por edad ni sexo: casi todos son castrados de 3 a 9 años. Cada caballo tiene su propio tiempo.
+- **Ajustes**: el HKJC no publica el viento. Se mide el going (GOOD TO FIRM, YIELDING, WET SLOW...) y, sobre eso, el **riel**
+  (A, B, C+3...), que mueve los tiempos casi lo mismo. Se probó además una variante por reunión (lo que todavía se apartan del par
+  todas las carreras del día) y no mejora el acierto (24,7 % contra 24,5 %).
+- **Equivalencia**: Sha Tin = 0; Happy Valley da +0,21 km/h con los mismos caballos.
+- **Modelo**: las mismas 40 variables. El mercado sale de la cuota final a ganador; los kilos, del peso llevado; jockeys y
+  cuidadores por nombre completo (hay muchos Leung, Chan y Wong con la misma inicial); "sprint" es 1000 m y "fondo" 1800 m o más;
+  corrió = tiene cuota final (WV/WX no corrieron; PU, UR, FE y DNF cuentan como perdedores).
+- El HKJC no guarda el rating de cada caballo en cada carrera (solo el de hoy, en el programa): se muestra pero no entra al modelo.
+  En los handicaps el peso ya lo refleja (más rating, más peso).
+- Entrenado con 2017 a octubre de 2024 y medido con las 1.717 carreras de octubre de 2024 a octubre de 2026: el de más
+  probabilidad gana el **24,5 %** (la proyección sola, 20,1 %; el favorito de las cuotas, 30,1 %). Trifecta sin orden con sus 3
+  primeros, 4,4 %; exacta sin orden, 20,2 %. Bien calibrado: a los que les da 24 % ganan 22 %; a los de 44 %, 43 %.
+  El mercado de Hong Kong es mucho más eficiente que el de Uruguay (allá el favorito gana 35 % y el modelo 30,7 %).
+- El programa muestra además rating y su cambio, banda de rating de la carrera, riel, equipo (avisa la primera vez con
+  anteojeras, capucha...), peso del caballo, posiciones en cada tramo, la cuota final de cada antecedente y la chaquetilla oficial.
+- Debutantes: sin carreras en HK. Los PPG llegan con campaña en el exterior que la base no tiene.

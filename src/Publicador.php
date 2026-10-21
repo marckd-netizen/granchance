@@ -419,7 +419,7 @@ final class Publicador
     }
 
     /** Calendario iCalendar (RFC 5545) con los eventos; en UTC para no depender de la zona del que lo importa. */
-    private static function ics(array $eventos, string $nombre = 'GranChance'): string
+    public static function ics(array $eventos, string $nombre = 'GranChance'): string
     {
         $txt = fn (string $v) => str_replace(["\\", ';', ',', "\n"], ['\\\\', '\\;', '\\,', '\\n'], $v);
         $utc = new \DateTimeZone('UTC');
@@ -449,18 +449,18 @@ final class Publicador
     }
 
     /** calendario.ics: las carreras de las reuniones publicadas desde hace una semana en adelante. */
-    private function calendarioGeneral(): void
+    private static function calendarioGeneral(string $carpeta): void
     {
         $desde = date('Y-m-d', strtotime('-7 day'));
         $eventos = '';
-        foreach (glob("{$this->carpeta}/calendario/*.ics") ?: [] as $a) {
+        foreach (glob("$carpeta/calendario/*.ics") ?: [] as $a) {
             if (preg_match('/(\d{4}-\d{2}-\d{2})_\d+\.ics$/', $a, $m) && $m[1] >= $desde
                 && preg_match_all('/BEGIN:VEVENT\r\n.*?END:VEVENT\r\n/s', (string)file_get_contents($a), $ev)) {
                 $eventos .= implode('', $ev[0]);
             }
         }
         $vacio = self::ics([], 'GranChance · carreras');
-        file_put_contents("{$this->carpeta}/calendario.ics", str_replace("END:VCALENDAR\r\n", $eventos . "END:VCALENDAR\r\n", $vacio));
+        file_put_contents("$carpeta/calendario.ics", str_replace("END:VCALENDAR\r\n", $eventos . "END:VCALENDAR\r\n", $vacio));
     }
 
     /** Agrega al programa ya publicado el enlace a su página de resultado (sin regenerarlo). */
@@ -516,7 +516,7 @@ final class Publicador
         foreach ($porNivel as $nivel => $cs) {
             $guardado['niveles'][$nivel] = array_diff_key(self::medir($cs), ['aciertos' => 1]);
         }
-        $this->guardarResumen("{$fecha}_$hip", $guardado);
+        self::guardarResumen($this->carpeta, "{$fecha}_$hip", $guardado);
         return $resumen;
     }
 
@@ -652,7 +652,7 @@ final class Publicador
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
         $titulo = sprintf('Predicción vs resultado · %s · %s', ProgramaNoOficial::nombreHipodromo($hip), date('d/m/Y', strtotime($fecha)));
         $clave = "{$fecha}_$hip";
-        $o = $this->cabeceraHtml($titulo) . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a>'
+        $o = self::cabeceraHtml($titulo, $this->analytics) . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a>'
             . (is_file("{$this->carpeta}/programas/$clave.html") ? ' · <a href="../programas/' . $clave . '.html">Programa no oficial</a>' : '')
             . ' · <a href="estadisticas.html">Acierto acumulado</a></div>';
         $o .= '<h1>' . $e($titulo) . '</h1>';
@@ -701,9 +701,10 @@ final class Publicador
 
     // ---------------------------------------------------------------- índice y estadísticas
 
-    private function guardarResumen(string $clave, array $resumen): void
+    /** Acierto de una reunión en resultados/resumen.json (lo usan también las reuniones de Hong Kong, HK\Publicador). */
+    public static function guardarResumen(string $carpeta, string $clave, array $resumen): void
     {
-        $archivo = $this->carpeta . '/resultados/resumen.json';
+        $archivo = $carpeta . '/resultados/resumen.json';
         $todo = is_file($archivo) ? (json_decode((string)file_get_contents($archivo), true) ?: []) : [];
         unset($resumen['aciertos']);
         $todo[$clave] = $resumen;
@@ -714,14 +715,23 @@ final class Publicador
     /** Escribe indice.json (para index.php) y resultados/estadisticas.html con el acierto acumulado. */
     public function indice(): void
     {
-        $resumen = is_file($this->carpeta . '/resultados/resumen.json')
-            ? (json_decode((string)file_get_contents($this->carpeta . '/resultados/resumen.json'), true) ?: []) : [];
+        self::escribirIndice($this->carpeta, $this->analytics);
+    }
+
+    /**
+     * Lo de indice() sin la base: lee los programas y resultados publicados en la carpeta (de Uruguay y de Hong Kong),
+     * así lo puede llamar también bin/hk_publicar.php.
+     */
+    public static function escribirIndice(string $carpeta, string $analytics = ''): void
+    {
+        $resumen = is_file($carpeta . '/resultados/resumen.json')
+            ? (json_decode((string)file_get_contents($carpeta . '/resultados/resumen.json'), true) ?: []) : [];
         $reuniones = [];
         foreach (['programas' => 'programa', 'resultados' => 'resultado'] as $sub => $tipo) {
-            foreach (glob("{$this->carpeta}/$sub/*.html") ?: [] as $a) {
+            foreach (glob("$carpeta/$sub/*.html") ?: [] as $a) {
                 if (preg_match('/(\d{4}-\d{2}-\d{2})_(\d+)\.html$/', $a, $m)) {
                     $reuniones[$m[1] . '_' . $m[2]] ??= ['fecha' => $m[1], 'hipodromo' => (int)$m[2], 'nombre' => ProgramaNoOficial::nombreHipodromo((int)$m[2]),
-                        'sigla' => self::sigla((int)$m[2]), 'programa' => null, 'resultado' => null, 'carreras' => null, 'acierto' => null];
+                        'sigla' => self::sigla((int)$m[2]), 'pais' => self::pais((int)$m[2]), 'programa' => null, 'resultado' => null, 'carreras' => null, 'acierto' => null];
                     $reuniones[$m[1] . '_' . $m[2]][$tipo] = "$sub/" . basename($a);
                 }
             }
@@ -734,8 +744,8 @@ final class Publicador
         }
         unset($r);
         krsort($reuniones);
-        $this->calendarioGeneral();
-        file_put_contents($this->carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'analytics' => $this->analytics, 'reuniones' => array_values($reuniones)],
+        self::calendarioGeneral($carpeta);
+        file_put_contents($carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'analytics' => $analytics, 'reuniones' => array_values($reuniones)],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         // Estadísticas: total, por hipódromo y por mes; las predicciones reconstruidas van aparte.
@@ -746,12 +756,13 @@ final class Publicador
             $tipo = $r['origen'] === 'previa' ? 'Publicadas antes de la carrera' : 'Reconstruidas después';
             $grupos[$tipo]['Total'][] = $r;
             $grupos[$tipo][ProgramaNoOficial::nombreHipodromo((int)$hip)][] = $r;
+            $grupos[$tipo]['pais:' . self::pais((int)$hip)][] = $r;
             $grupos[$tipo][substr($fecha, 0, 7)][] = $r;
             foreach ($r['niveles'] ?? [] as $nivel => $m) {
                 $niveles[$tipo][ProgramaNoOficial::nombreHipodromo((int)$hip)][$nivel][] = $m;
             }
         }
-        $o = $this->cabeceraHtml('Acierto acumulado') . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a></div><h1>Acierto del programa no oficial</h1>'
+        $o = self::cabeceraHtml('Acierto acumulado', $analytics) . '<div class="gc-barra"><a href="../">GranChance · todos los programas</a></div><h1>Acierto del programa no oficial</h1>'
             . '<p class="nota">Primero del programa: cuántas veces ganó (y su % de carreras), llegó en el marcador o el ganador estaba entre los 3 primeros del programa. '
             . 'Exacta y trifecta sin orden con los 2 y 3 primeros. Retorno por cada $1 apostado a ganador al primero del programa, y apostando $1 a cada uno de los 3 primeros (más de $1 es ganancia). Para comparar, cuántas veces ganó el favorito del público.</p>';
         krsort($grupos);
@@ -759,6 +770,15 @@ final class Publicador
             $o .= '<h2>' . htmlspecialchars($tipo) . '</h2>';
             $total = ['Total' => $filas['Total']];
             unset($filas['Total']);
+            // Por país, solo si hay reuniones de más de uno (si no, es igual al total).
+            $paises = array_filter($filas, fn ($k) => str_starts_with((string)$k, 'pais:'), ARRAY_FILTER_USE_KEY);
+            $filas = array_diff_key($filas, $paises);
+            if (count($paises) > 1) {
+                ksort($paises);
+                foreach ($paises as $k => $rs) {
+                    $total[substr($k, 5)] = $rs;
+                }
+            }
             uksort($filas, fn ($a, $b) => [ctype_digit($a[0]), $b] <=> [ctype_digit($b[0]), $a]);
             $o .= self::tablaAcierto(array_map(fn ($n, $rs) => [$n, self::sumar($rs)], array_keys($total + $filas), $total + $filas), true);
             // Por categoría de carrera, una tabla por hipódromo (las de más carreras primero).
@@ -771,7 +791,7 @@ final class Publicador
                     . self::tablaAcierto(array_map(fn ($n, $ms) => [$n, self::sumar($ms)], array_keys($porNivel), $porNivel), true);
             }
         }
-        file_put_contents($this->carpeta . '/resultados/estadisticas.html', $o . '</body></html>');
+        file_put_contents($carpeta . '/resultados/estadisticas.html', $o . '</body></html>');
     }
 
     /** Orden de las categorías: de las más importantes a las más bajas. */
@@ -783,7 +803,7 @@ final class Publicador
         return $i === false ? count($orden) : $i;
     }
 
-    private static function sumar(array $rs): array
+    public static function sumar(array $rs): array
     {
         $t = ['reuniones' => count($rs)];
         foreach (['carreras', 'ganador', 'place', 'ganador_top3', 'exacta', 'trifecta', 'favorito', 'retorno', 'retorno3', 'apostado3'] as $k) {
@@ -793,7 +813,7 @@ final class Publicador
     }
 
     /** @param list<array{0:string,1:array}> $filas [etiqueta, medición] */
-    private static function tablaAcierto(array $filas, bool $conEtiqueta): string
+    public static function tablaAcierto(array $filas, bool $conEtiqueta): string
     {
         $pct = fn ($n, $d) => $d ? sprintf('%d <small>(%s %%)</small>', $n, number_format(100 * $n / $d, 1, ',', '.')) : '';
         $o = '<table class="acierto"><thead><tr>' . ($conEtiqueta ? '<th></th><th>Reuniones</th>' : '')
@@ -809,10 +829,10 @@ final class Publicador
         return $o . '</tbody></table>';
     }
 
-    private function cabeceraHtml(string $titulo): string
+    public static function cabeceraHtml(string $titulo, string $analytics = ''): string
     {
         return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
-            . htmlspecialchars($titulo) . '</title>' . self::analytics($this->analytics) . '<style>' . self::CSS_RESULTADOS . self::CSS_AVISOS . '</style></head><body>';
+            . htmlspecialchars($titulo) . '</title>' . self::analytics($analytics) . '<style>' . self::CSS_RESULTADOS . self::CSS_AVISOS . '</style></head><body>';
     }
 
     /** Etiqueta de Google Analytics 4 (config 'google_analytics', "G-XXXXXXX"); vacío si no está configurado. */
@@ -827,7 +847,13 @@ final class Publicador
 
     public static function sigla(int $id): string
     {
-        return [1 => 'MRÑ', 4 => 'COL', 8 => 'FLO', 9 => 'FDA', 13 => 'LPD', 16 => 'MEL', 21 => 'PAY', 22 => 'ROC'][$id] ?? (string)$id;
+        return [1 => 'MRÑ', 4 => 'COL', 8 => 'FLO', 9 => 'FDA', 13 => 'LPD', 16 => 'MEL', 21 => 'PAY', 22 => 'ROC', 101 => 'ST', 102 => 'HV'][$id] ?? (string)$id;
+    }
+
+    /** País de un hipódromo de la web: los de Hong Kong tienen número 101 (Sha Tin) y 102 (Happy Valley), ver HK\Publicador. */
+    public static function pais(int $id): string
+    {
+        return $id > 100 ? 'Hong Kong' : 'Uruguay';
     }
 
     private static function kg(int|float|string|null $v): string
@@ -835,7 +861,7 @@ final class Publicador
         return number_format((float)$v, 1, ',', '.');
     }
 
-    private const CSS_AVISOS = <<<'CSS'
+    public const CSS_AVISOS = <<<'CSS'
 .gc-barra { display:flex; flex-wrap:wrap; gap:6px; align-items:baseline; padding:4px 0 6px; }
 .gc-barra a { color:var(--acento); text-decoration:none; font-weight:600; }
 .gc-aviso { border:1px solid var(--linea); border-left:4px solid var(--menos); border-radius:6px; padding:6px 10px; margin:6px 0; background:var(--cabecera); }
@@ -845,7 +871,7 @@ a.ficha { color:inherit; text-decoration:none; border-bottom:1px dotted currentC
 .nro-b { display:inline-block; min-width:18px; text-align:center; border-radius:4px; font-weight:700; border:1px solid var(--linea); text-decoration:line-through; }
 CSS;
 
-    private const CSS_RESULTADOS = <<<'CSS'
+    public const CSS_RESULTADOS = <<<'CSS'
 :root { --fondo:#fff; --texto:#1d1d1f; --suave:#6b6b70; --linea:#e3e3e6; --cabecera:#f2f2f4; --mas:#0b7a3e; --menos:#b3261e; --acento:#1f4e8c; --oro:#f6e7a8; --plata:#e4e7ec; --bronce:#f1d5bd; }
 @media (prefers-color-scheme: dark) { :root { --fondo:#161618; --texto:#ececef; --suave:#a0a0a8; --linea:#34343a; --cabecera:#232327; --mas:#5fd08f; --menos:#ff8a80; --acento:#8ab4f8; --oro:#5a4b12; --plata:#3a3d44; --bronce:#4f3522; } }
 * { box-sizing:border-box; }

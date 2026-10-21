@@ -667,7 +667,7 @@ final class ProgramaNoOficial
 
     public static function nombreHipodromo(int $id): string
     {
-        return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha'][$id] ?? "Hipódromo $id";
+        return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha', 101 => 'Sha Tin', 102 => 'Happy Valley'][$id] ?? "Hipódromo $id";
     }
 
     private static function siglaHipodromo(int $id): string
@@ -710,7 +710,7 @@ final class ProgramaNoOficial
 })();
 JS;
 
-    private const CSS = <<<'CSS'
+    public const CSS = <<<'CSS'
 :root { --fondo:#fff; --texto:#1d1d1f; --suave:#6b6b70; --linea:#e3e3e6; --cabecera:#f2f2f4; --mas:#0b7a3e; --menos:#b3261e; --acento:#1f4e8c; }
 @media (prefers-color-scheme: dark) { :root { --fondo:#161618; --texto:#ececef; --suave:#a0a0a8; --linea:#34343a; --cabecera:#232327; --mas:#5fd08f; --menos:#ff8a80; --acento:#8ab4f8; } }
 * { box-sizing:border-box; }

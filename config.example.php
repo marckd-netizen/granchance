@@ -23,4 +23,14 @@ return [
     'zona_horaria' => 'America/Montevideo',
     // ID de medición de Google Analytics 4 ("G-XXXXXXXXXX"); vacío para no usarlo.
     'google_analytics' => '',
+    // Hong Kong (HKJC, Sha Tin y Happy Valley): base aparte con sql/schema_hk.sql. Ver bin/hk_historico.php.
+    'hk' => [
+        'db' => [
+            'dsn'      => 'mysql:host=localhost;dbname=granchance_hk;charset=utf8mb4',
+            'usuario'  => 'granchance',
+            'clave'    => '',
+        ],
+        'pausa_segundos' => 1,
+        'carpeta_crudos' => __DIR__ . '/raw/hk',
+    ],
 ];

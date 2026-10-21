@@ -2,11 +2,13 @@ Options -Indexes
 DirectoryIndex index.php
 AddType "text/calendar; charset=utf-8" .ics
 
-# Reuniones de un hipódromo: /hipodromo-rocha
+# Reuniones de un hipódromo (/hipodromo-rocha) o de un país (/pais-hong-kong)
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteRule ^hipodromo-([a-z0-9-]+)/$ /hipodromo-$1 [R=301,L]
   RewriteRule ^hipodromo-([a-z0-9-]+)$ index.php?h=$1 [L,QSA]
+  RewriteRule ^pais-([a-z0-9-]+)/$ /pais-$1 [R=301,L]
+  RewriteRule ^pais-([a-z0-9-]+)$ index.php?p=$1 [L,QSA]
   # Fichas: /caballo/123-nombre, /jockey/…, /cuidador/…, /stud/…, /criador/…; y el buscador
   RewriteRule ^(caballo|jockey|cuidador|stud|criador)/(\d+)(-[a-z0-9-]*)?/?$ ficha.php?tipo=$1&id=$2 [L,QSA]
   RewriteRule ^buscar/?$ ficha.php?tipo=buscar [L,QSA]
