@@ -135,8 +135,8 @@ final class Publicador
             if (!preg_match('/^(\d{1,2}):(\d{2})$/', (string)$c['hora'], $m)) {
                 continue;
             }
-            // El calendario de la web es en hora de Uruguay (enlaceGoogle e ics la indican así).
-            $inicio = (new \DateTimeImmutable($p['fecha'], $zona))->setTime((int)$m[1], (int)$m[2])->setTimezone(new \DateTimeZone('America/Montevideo'));
+            // Con la zona del hipódromo: enlaceGoogle e ics la pasan a UTC y cada calendario la muestra en la zona de su dueño.
+            $inicio = (new \DateTimeImmutable($p['fecha'], $zona))->setTime((int)$m[1], (int)$m[2]);
             $res[$c['numero']] = [
                 'uid' => sprintf('%s-%d-%d@granchance.com', $p['fecha'], $web, $c['numero']),
                 'inicio' => $inicio,

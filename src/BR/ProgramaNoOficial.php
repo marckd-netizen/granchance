@@ -19,6 +19,7 @@ final class ProgramaNoOficial
     public const ANTECEDENTES = 6;
     public const NOMBRES = [1 => 'Gávea', 2 => 'Cidade Jardim', 3 => 'Cristal', 4 => 'Tarumã', 5 => 'Madalena', 6 => 'Sorocaba'];
     public const SIGLAS = [1 => 'GAV', 2 => 'CJ', 3 => 'CRI', 4 => 'TAR', 5 => 'MAD', 6 => 'SOR'];
+    private const ZONA = 'America/Sao_Paulo';
     public const CIUDADES = [1 => 'Rio de Janeiro', 2 => 'São Paulo', 3 => 'Porto Alegre', 4 => 'Curitiba', 5 => 'Recife', 6 => 'Sorocaba'];
 
     public function __construct(private PDO $db, private Velocidades $vel, private Modelo $modelo)
@@ -297,10 +298,10 @@ final class ProgramaNoOficial
             . '<title>' . $e($titulo) . '</title><style>' . ProgramaUy::CSS . self::CSS . '</style></head><body>';
         $o .= '<nav class="navegacion"><div class="fila carreras">Páreos:';
         foreach ($p['carreras'] as $c) {
-            $o .= ' <a href="#carrera-' . $c['numero'] . '" title="' . $e($c['distancia'] . ' m · ' . ($c['tipo_prova'] ?? '') . ' · ' . $c['premio']) . '">' . $c['numero'] . 'º <small>' . $e($c['hora']) . '</small></a>';
+            $o .= ' <a href="#carrera-' . $c['numero'] . '" title="' . $e($c['distancia'] . ' m · ' . ($c['tipo_prova'] ?? '') . ' · ' . $c['premio']) . '">' . $c['numero'] . 'º <small>' . ProgramaUy::hora($p['fecha'], $c['hora'], self::ZONA) . '</small></a>';
         }
         $o .= '</div></nav>';
-        $o .= '<header><h1>' . $e($titulo) . '</h1><p>Hora de Brasília (igual que Uruguay). Programa del raceday del JCB leído el ' . $e($actualizado) . '. Velocidades en km/h. '
+        $o .= '<header><h1>' . $e($titulo) . '</h1><p>Horas de Brasília (la página las pasa a tu zona horaria). Programa del raceday del JCB leído el ' . $e($actualizado) . '. Velocidades en km/h. '
             . '<b>Par</b>: promedio de los 4 primeros en pista macia para esa distancia, superficie y nivel (Grupo, Listed, Claiming por categoría, Índice Técnico, y en las comunes las victorias que permite la chamada). '
             . 'El JCB publica solo el tiempo del ganador: el de los demás sale de los cuerpos al ganador. '
             . '<b>Ajuste</b>: estado de la pista (leve, pesada, encharcada...) y si el páreo se pasó del césped a la arena ("variante"), medidos con los datos. '
@@ -312,12 +313,12 @@ final class ProgramaNoOficial
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
         }
-        return $o . '</body></html>';
+        return $o . ProgramaUy::JS_HORAS . '</body></html>';
     }
 
     private function htmlCarrera(array $c, \Closure $e): string
     {
-        $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'º páreo · ' . $e($c['hora']) . ' · ' . $e($c['distancia']) . ' m en ' . $e($c['superficie'])
+        $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'º páreo · ' . ProgramaUy::hora($c['fecha'], $c['hora'], self::ZONA) . ' · ' . $e($c['distancia']) . ' m en ' . $e($c['superficie'])
             . ($c['pista'] ? ' · ' . $e($c['pista']) : '') . '</h2>';
         $o .= '<p class="premio"><b>' . $e($c['premio']) . '</b>' . ($c['tipo_prova'] ? '. ' . $e($c['tipo_prova']) : '') . '</p>';
         $o .= '<p class="par">Nivel: <b>' . $e($c['nivel']) . '</b>';
@@ -334,7 +335,7 @@ final class ProgramaNoOficial
             . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $notas = $h['retirado'] ? 'Forfait' : implode('. ', array_merge($h['notas'], $h['notas_hoy'] ?? []));
-            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td><span class="nro">' . $e($h['numero']) . '</span></td><td>' . $e($h['nombre'])
+            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . $e($h['nombre'])
                 . '</td><td>' . self::num($h['peso'], 1) . '</td><td>' . $e($h['ultimas6']) . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo'])
                 . '</td><td>' . self::idx($h['en_distancia']) . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">'
                 . ($h['prob'] !== null ? self::num(100 * $h['prob'], 0) . ' %' : '') . '</td><td>' . $e($h['dias']) . '</td><td>' . $e($notas) . '</td></tr>';
@@ -350,7 +351,7 @@ final class ProgramaNoOficial
     private function htmlCaballo(array $h, array $juntos, \Closure $e): string
     {
         $ped = $h['pedigri'];
-        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3><span class="nro">' . $e($h['numero']) . '</span> ' . $e($h['nombre'])
+        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ProgramaUy::mandil((string)$h['numero']) . ' ' . $e($h['nombre'])
             . ' <small>' . $e(trim(($h['pelaje'] ?? '') . ' ' . mb_strtolower((string)$h['sexo']) . ' ' . ($h['edad'] ? $h['edad'] . ' años' : ''))) . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg' . ($h['peso_texto'] && str_contains((string)$h['peso_texto'], '/') ? ' (' . $e($h['peso_texto']) . ')' : '') . ' · Jóquei: '
             . ($h['retirado'] ? 'Forfait' : $e($h['jockey']) . ($h['aprendiz'] ? ' ' . $e($h['aprendiz']) : '') . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))

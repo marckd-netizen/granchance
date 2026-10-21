@@ -252,8 +252,8 @@ final class Publicador
         }
         if ($sinHora) {
             // Las horas de relleno no se muestran.
-            $html = preg_replace('/(<h2>\d+ª carrera) · \d{1,2}:\d{2} ·/u', '$1 · hora a confirmar ·', $html);
-            $html = preg_replace('/(ª) <small>0\d:\d{2}<\/small><\/a>/u', '$1</a>', $html);
+            $html = preg_replace('/(<h2>\d+ª carrera) · (?:<time[^>]*>)?\d{1,2}:\d{2}(?:<\/time>)? ·/u', '$1 · hora a confirmar ·', $html);
+            $html = preg_replace('/(ª) <small>(?:<time[^>]*>)?0\d:\d{2}(?:<\/time>)?<\/small><\/a>/u', '$1</a>', $html);
         }
         if ($preliminar) {
             $html = str_replace('Jockey:  · ', 'Jockey: a confirmar · ', $html);
@@ -338,7 +338,7 @@ final class Publicador
     private const DURACION_EVENTO = 5;   // minutos
 
     /**
-     * Las carreras de la reunión como eventos (hora de Uruguay). Las que no tienen hora quedan afuera.
+     * Las carreras de la reunión como eventos (con la hora de Uruguay; enlaceGoogle e ics los pasan a UTC). Las que no tienen hora quedan afuera.
      * @return array<int, array{uid:string, inicio:\DateTimeImmutable, fin:\DateTimeImmutable, titulo:string, lugar:string, detalle:string}>
      */
     private function eventos(array $p): array
@@ -406,25 +406,26 @@ final class Publicador
         return (bool)$carreras;
     }
 
+    /** Enlace para agregar la carrera a Google Calendar. En UTC: Google la muestra en la zona horaria de cada uno. */
     public static function enlaceGoogle(array $ev): string
     {
+        $utc = new \DateTimeZone('UTC');
         return 'https://calendar.google.com/calendar/render?' . http_build_query([
             'action' => 'TEMPLATE',
             'text' => $ev['titulo'],
-            'dates' => $ev['inicio']->format('Ymd\THis') . '/' . $ev['fin']->format('Ymd\THis'),
-            'ctz' => 'America/Montevideo',
+            'dates' => $ev['inicio']->setTimezone($utc)->format('Ymd\THis\Z') . '/' . $ev['fin']->setTimezone($utc)->format('Ymd\THis\Z'),
             'location' => $ev['lugar'],
             'details' => $ev['detalle'],
         ], '', '&', PHP_QUERY_RFC3986);
     }
 
-    /** Calendario iCalendar (RFC 5545) con los eventos; en UTC para no depender de la zona del que lo importa. */
+    /** Calendario iCalendar (RFC 5545) con los eventos; en UTC, así cada calendario los muestra en la zona horaria de su dueño. */
     public static function ics(array $eventos, string $nombre = 'GranChance'): string
     {
         $txt = fn (string $v) => str_replace(["\\", ';', ',', "\n"], ['\\\\', '\\;', '\\,', '\\n'], $v);
         $utc = new \DateTimeZone('UTC');
         $l = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GranChance//Programas no oficiales//ES', 'CALSCALE:GREGORIAN',
-            'X-WR-CALNAME:' . $txt($nombre), 'X-WR-TIMEZONE:America/Montevideo', 'REFRESH-INTERVAL;VALUE=DURATION:PT12H'];
+            'X-WR-CALNAME:' . $txt($nombre), 'REFRESH-INTERVAL;VALUE=DURATION:PT12H'];
         foreach ($eventos as $ev) {
             array_push($l, 'BEGIN:VEVENT', 'UID:' . $ev['uid'], 'DTSTAMP:' . gmdate('Ymd\THis\Z'),
                 'DTSTART:' . $ev['inicio']->setTimezone($utc)->format('Ymd\THis\Z'),
