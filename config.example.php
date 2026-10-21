@@ -15,4 +15,14 @@ return [
     'hipodromos' => [1, 4, 8, 9, 13, 16, 21, 22],
     'pausa_segundos' => 2,          // entre pedidos, para no cargar el servidor
     'carpeta_crudos' => __DIR__ . '/raw',
+    // Hong Kong (HKJC, Sha Tin y Happy Valley): base aparte con sql/schema_hk.sql. Ver bin/hk_historico.php.
+    'hk' => [
+        'db' => [
+            'dsn'      => 'mysql:host=localhost;dbname=granchance_hk;charset=utf8mb4',
+            'usuario'  => 'granchance',
+            'clave'    => '',
+        ],
+        'pausa_segundos' => 1,
+        'carpeta_crudos' => __DIR__ . '/raw/hk',
+    ],
 ];
