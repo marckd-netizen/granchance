@@ -14,7 +14,18 @@ $tipo = (string)($_GET['tipo'] ?? '');
 try {
     $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
     $fichas = new GranChance\Fichas($db, __DIR__);
-    $rankings = new GranChance\Rankings($db, __DIR__);
+    // Los rankings de Hong Kong (?pais=hong-kong) leen su propia base; si no está configurada o no responde, quedan solo los de Uruguay.
+    $dbHk = null;
+    if ($tipo === 'ranking' && !empty($config['hk']['db']['dsn'])) {
+        try {
+            $dbHk = new PDO($config['hk']['db']['dsn'], $config['hk']['db']['usuario'], $config['hk']['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
+            $dbHk = $dbHk->query('SELECT 1 FROM actuacion LIMIT 1')->fetchColumn() ? $dbHk : null;
+        } catch (Throwable $e) {
+            error_log('ficha.php: base de Hong Kong: ' . $e->getMessage());
+            $dbHk = null;
+        }
+    }
+    $rankings = new GranChance\Rankings($db, __DIR__, $dbHk);
     $html = match (true) {
         $tipo === 'buscar' => $fichas->buscar((string)($_GET['q'] ?? '')),
         $tipo === 'ranking' && empty($_GET['de']) => $rankings->indice(),
