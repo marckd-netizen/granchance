@@ -224,3 +224,46 @@ Qué cambia respecto de Uruguay:
 - El programa muestra además rating y su cambio, banda de rating de la carrera, riel, equipo (avisa la primera vez con
   anteojeras, capucha...), peso del caballo, posiciones en cada tramo, la cuota final de cada antecedente y la chaquetilla oficial.
 - Debutantes: sin carreras en HK. Los PPG llegan con campaña en el exterior que la base no tiene.
+
+## Brasil (apostas.jcb.com.br)
+
+Baja el raceday y el resultado completo de cada páreo de [apostas.jcb.com.br](https://apostas.jcb.com.br/pt-br/raceday?dia=2015-01-03)
+(Jockey Club Brasileiro) a una base aparte, `granchance_br`, con las mismas tablas que la de Uruguay y lo que agrega el JCB.
+
+```sh
+mysql -u root -p -e "CREATE DATABASE granchance_br CHARACTER SET utf8mb4"
+mysql -u root -p granchance_br < sql/schema_br.sql
+# completar la sección 'br' de config.php (ver config.example.php)
+```
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/br_historico.php --desde=2015-01-01 [--hasta=AAAA-MM-DD]` | Recorre el raceday día por día, anota las reuniones brasileñas y baja cada una. Reanudable. Se puede correr en paralelo por tramos de años. |
+| `php bin/br_diario.php [--dias=3]` | Vuelve a bajar los días y las reuniones de los últimos días sin usar los crudos (reuniones nuevas, correcciones). Para cron. |
+| `php bin/br_parsear.php --fecha=2015-01-03 --reuniao=42007195 [--pareo=1]` | Muestra en JSON lo que se lee de un páreo (programa y resultado completo), sin tocar la base. |
+
+- El raceday de un día (`raceday?dia=AAAA-MM-DD`) tiene una pestaña por reunión: las de los hipódromos de `hipodromos` en config
+  (Gávea, Cidade Jardim, Cristal, Tarumã, Madalena, Sorocaba) y decenas de reuniones extranjeras que el JCB transmite (Francia,
+  Estados Unidos, Australia, Maroñas...), que se saltean. "Gávea Int" y "Gávea Extra" son reuniones aparte en la Gávea (`alias`).
+  Si un día no hay carreras, la página muestra la próxima reunión: se salta directo a esa fecha.
+- Por reunión se piden el programa (`raceday?dia=...&idReuniao=N`, todos los inscriptos con cuota, pesos, pedigree, cuidador y
+  propietario) y el resultado completo de cada páreo (`corridas/resultadocompleto?idReuniao=N&numeroPareo=P`: llegada con cuerpos,
+  tiempo del ganador, criador, chamada, récord, ocorrências y dividendos). Con 0,5 s entre pedidos, ~5 s por reunión.
+- Los crudos quedan en `raw/br/dias/AAAA/AAAA-MM-DD.html.gz` (raceday de cada día) y
+  `raw/br/AAAA/MM/AAAA-MM-DD_<idReuniao>/reuniao.html.gz` y `pareo_NN.html.gz`, sin menús ni scripts.
+
+Diferencias con Uruguay:
+
+- `reunion.id_jcb` es el `idReuniao` del JCB y `nro_reunion` su número de reunión (común a todos los hipódromos); puede haber más
+  de una reunión por hipódromo y día (Gávea Int). También `penetrometro_vf` / `penetrometro_pr` (cm) y el total apostado.
+- `caballo` es el mismo si coinciden nombre y generación (`anio_nac`, deducido de la edad: en Brasil cumplen años el 1º de julio).
+  El nombre queda tal cual, con el sufijo de país o las marcas que use cada hipódromo ("SNAP DECISION-ARG", "UVA DO XIMBO (A)").
+- Hasta mediados de 2015 el JCB publicaba solo los 5 primeros puestos (el resto queda con `puesto` NULL); después, la llegada completa
+  con los cuerpos al ganador en `dist_acumulada` ("Focinho", "1/2", "3 3/4"...). Forfaits: `retiro_motivo` = 'forfait', sin puesto.
+- `peso_asignado` y `peso_real`: "57/6 kg" es 57 asignado y 56 llevado (descargo de aprendiz `Ap1`..`Ap4` en `aprendiz`, o sobrepeso).
+- `actuacion.cuota` es el rateio a ganador (por R$1) de cada caballo; los dividendos del "Resultado por modalidade" están en `apuesta`
+  (Vencedor, Placê, Dupla, Exata, Trifeta, Quadrifeta...). `favorito` marca el favorito del resultado completo.
+- `carrera.tipo_prova` (Normal, Claiming D, Grupo I, Listed, Índice Técnico...), `hora` real de largada y `hora_programa`,
+  `superficie` (césped, arena, sintética) y `pista` (leve, macia, pesada, encharcada; "variante" si se pasó a la arena), `recorde`,
+  `condicion` (la chamada) y `comentario` (ocorrências y ocorrências veterinárias). Estreantes: `estreante` = 1, sin peso.
+- No publica bolsa, viento ni parciales (quedan NULL).
