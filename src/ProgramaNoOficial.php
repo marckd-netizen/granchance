@@ -667,7 +667,7 @@ final class ProgramaNoOficial
 
     public static function nombreHipodromo(int $id): string
     {
-        return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha'][$id] ?? "Hipódromo $id";
+        return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha', 101 => 'Sha Tin', 102 => 'Happy Valley'][$id] ?? "Hipódromo $id";
     }
 
     private static function siglaHipodromo(int $id): string

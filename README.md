@@ -97,7 +97,7 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 
 | Archivo | Qué es |
 |---|---|
-| `index.php` | Portada: próximas reuniones y reuniones pasadas por mes, con filtro por hipódromo. Lee `indice.json`. |
+| `index.php` | Portada: próximas reuniones y reuniones pasadas por mes, con un árbol país → hipódromos para filtrar (`/pais-uruguay`, `/pais-hong-kong`, `/hipodromo-sha-tin`). Lee `indice.json`. |
 | `programas/AAAA-MM-DD_<hip>.html` | Programa no oficial. Arriba, los borrados y los cambios detectados desde que se publicó. El calendario salta entre los programas publicados. |
 | `resultados/AAAA-MM-DD_<hip>.html` | Lo que decía el programa (orden por probabilidad) contra la llegada, carrera por carrera, con el acierto de la reunión. |
 | `ficha.php` | Fichas de caballos, jockeys, cuidadores, studs y criadores (`/caballo/123-nombre`, `/jockey/…`, `/cuidador/…`, `/stud/…`, `/criador/…`) y el buscador (`/buscar?q=`): todas las carreras corridas y las próximas (tabla `inscripcion`), premios cobrados, puestos por año y por distancia, con filtro por hipódromo. A diferencia de la portada, lee la base; en cPanel encuentra el proyecto con el `.granchance.php` que deja `publicar.php`. Los programas y resultados enlazan cada caballo, jockey, cuidador y stud con su ficha, y el programa suma el criador de cada caballo (sale de la base). |
@@ -141,6 +141,20 @@ Tablas nuevas en `sql/publicacion.sql` (las crea `bin/publicar.php`).
 
 El primero carga los resultados de ayer, publica su predicción vs resultado y relee los programas a 15 días; el segundo toma los
 borrados del día (solo actúa de 11 a 20 h, hora de Uruguay); el tercero reentrena el modelo los lunes.
+
+Hong Kong (ver "Programa no oficial de Hong Kong"): crear la base `granchance_hk`, cargar el respaldo (`granchance_hk.sql.gz`),
+completar la sección `hk` de `config.php` y, la primera vez, `php bin/hk_modelo.php`. Después:
+
+```
+30 7 * * *  cd /home/USUARIO/granchance && php bin/hk_diario.php && php bin/hk_publicar.php >> raw/hk/publicar.log 2>&1
+20 * * * *  cd /home/USUARIO/granchance && php bin/hk_publicar.php >> raw/hk/publicar.log 2>&1
+45 4 * * 1  cd /home/USUARIO/granchance && php bin/hk_modelo.php >> raw/hk/modelo.log 2>&1
+```
+
+El primero carga los resultados de la última reunión y publica su predicción vs resultado; el segundo publica los programas
+de las próximas reuniones apenas el HKJC saca el Race Card (unos dos días antes) y los actualiza cada hora con los
+retirados y cambios de jockey, hasta que larga la primera carrera (desde ahí la predicción queda congelada); el tercero
+reentrena el modelo de HK los lunes.
 
 ## Hong Kong (HKJC: Sha Tin y Happy Valley)
 
@@ -188,6 +202,7 @@ El mismo programa y el mismo modelo que en Uruguay, con los datos del HKJC (`src
 |---|---|
 | `php bin/hk_modelo.php [--desde=2017-01-01] [--probar=AAAA-MM-DD]` | Calcula las velocidades y entrena el modelo con las carreras de HK; guarda los coeficientes en `modelo_coef` de `granchance_hk`. Tarda menos de un minuto. |
 | `php bin/hk_programa.php --fecha=AAAA-MM-DD --hipodromo=HV\|ST [--salida=archivo.html]` | Baja el Race Card de cada carrera (`racecard?racedate=...&Racecourse=HV&RaceNo=N`, queda en `raw/hk/.../programa_NN.html.gz`) y arma el programa no oficial en `raw/hk/programas/AAAA-MM-DD_<HV\|ST>.html`. El HKJC publica el programa dos días antes; conviene volver a correrlo el día de la reunión (retirados, cambios de jockey). |
+| `php bin/hk_publicar.php [--dias=4] [--fecha=AAAA-MM-DD --hipodromo=HV\|ST]` | Publica en la web (la carpeta de `bin/publicar.php`) los programas de las reuniones del calendario del HKJC de hoy a 4 días (hora de Hong Kong), guarda la predicción en `prediccion` de `granchance_hk` (congelada desde la primera carrera), arma la predicción vs resultado de las reuniones ya cargadas y rehace `indice.json`. En la web, Sha Tin es el hipódromo 101 y Happy Valley el 102 (`programas/2026-10-21_102.html`); la portada los muestra bajo Hong Kong y el acierto acumulado suma una fila por país. |
 
 Qué cambia respecto de Uruguay:
 
