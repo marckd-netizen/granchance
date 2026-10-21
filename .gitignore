@@ -2,3 +2,10 @@
 /raw/*
 !/raw/.gitkeep
 /config.php
+/public/programas/
+/public/resultados/
+/public/indice.json
+/.clave_db
+/composer.phar
+/public/calendario/
+/public/calendario.ics
