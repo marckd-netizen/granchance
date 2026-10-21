@@ -485,9 +485,9 @@ final class ProgramaNoOficial
             . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy (al lado, sus números). <b>Índice</b>: velocidad corregida por pista y viento menos el par general de esa distancia (0 = normal), llevado a este hipódromo (lo corrido en un hipódromo más fuerte vale más). '
             . '<b>Historia</b>: promedio de los índices de toda la campaña, pesando más las últimas carreras. <b>Prob.</b>: probabilidad de ganar según un modelo que combina la proyección, la campaña del caballo y cómo vienen ganando su jockey y su cuidador (con cualquier caballo); en Maroñas y Las Piedras, cuando ya está publicado, se suma el concurso de prensa (<b>Prensa</b>: cuántos periodistas lo dan de favorito, enemigo o sorpresa), que mejora el acierto. El resumen se ordena por ella. <b>vs par de hoy</b>: lo que viene corriendo comparado con los 4 primeros normales de la categoría de esta carrera.</p></header>';
         foreach ($p['carreras'] as $c) {
-            $o .= $this->htmlCarrera($c, $e);
+            $o .= $this->htmlCarrera($c + ['fecha' => $p['fecha']], $e);
         }
-        return $o . '</body></html>';
+        return $o . self::JS_HORAS . '</body></html>';
     }
 
     /** Barra de arriba: calendario de reuniones, reuniones del día, anterior/siguiente y enlaces a cada carrera. */
@@ -523,7 +523,7 @@ final class ProgramaNoOficial
         $o .= '<div class="fila carreras">Carreras:';
         foreach ($p['carreras'] as $c) {
             $o .= ' <a href="#carrera-' . $c['numero'] . '" title="' . $e($c['hora'] . ' · ' . ($c['distancia'] ? $c['distancia'] . ' m' : '') . ' · ' . $c['premio']) . '">'
-                . $c['numero'] . 'ª <small>' . $e($c['hora']) . '</small></a>';
+                . $c['numero'] . 'ª <small>' . self::hora($p['fecha'], $c['hora']) . '</small></a>';
         }
         $o .= '</div></nav>';
         if ($fechas) {
@@ -540,7 +540,7 @@ final class ProgramaNoOficial
     private function htmlCarrera(array $c, \Closure $e): string
     {
         $dist = $c['distancia'] ? $c['distancia'] . ' m' . ($c['nota_distancia'] ? ' (' . $c['nota_distancia'] . ')' : '') : 'distancia sin dato';
-        $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'ª carrera · ' . $e($c['hora']) . ' · ' . $dist . ' en ' . $e($c['superficie'])
+        $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'ª carrera · ' . self::hora($c['fecha'], $c['hora']) . ' · ' . $dist . ' en ' . $e($c['superficie'])
             . ($c['con_luz'] ? ' · con luz artificial' : '') . ' <small>Nro. ' . $e($c['nro_oficial']) . '</small></h2>';
         $o .= '<p class="premio"><b>' . $e($c['premio']) . '</b>. ' . $e($c['condicion']) . '</p>';
         $cat = Velocidades::nombreCategoria($c['nivel'], $c['edad'], $c['sexo']);
@@ -628,11 +628,52 @@ final class ProgramaNoOficial
         return $o . '</tbody></table></div>';
     }
 
-    /** Número del caballo con los colores de su mandil ("1A" usa los del 1). */
-    private static function mandil(string $numero): string
+    /** Número del caballo con los colores de su mandil ("1A" usa los del 1). Lo usan también Hong Kong y Brasil. */
+    public static function mandil(string $numero): string
     {
         [$fondo, $texto] = self::MANDILES[(int)$numero] ?? ['#555555', '#ffffff'];
         return '<span class="nro" style="background:' . $fondo . ';color:' . $texto . '">' . htmlspecialchars($numero) . '</span>';
+    }
+
+    /**
+     * Pasa las horas de las carreras (<time class="gc-hora" datetime="...">, ver hora()) a la zona horaria del que mira
+     * la página; la del hipódromo queda en el título. Sin JavaScript se ve la hora del hipódromo.
+     */
+    public const JS_HORAS = <<<'JS'
+<script>(() => {
+  const f = new Intl.DateTimeFormat('es', {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+  const dia = new Intl.DateTimeFormat('en-CA', {year: 'numeric', month: '2-digit', day: '2-digit'});
+  let cambio = false;
+  document.querySelectorAll('time.gc-hora').forEach(t => {
+    const iso = t.getAttribute('datetime'), d = new Date(iso);
+    if (isNaN(d)) return;
+    let local = f.format(d);
+    const fl = dia.format(d);
+    if (fl !== iso.slice(0, 10)) local += ' (' + fl.slice(8, 10) + '/' + fl.slice(5, 7) + ')';
+    if (local !== t.textContent) {
+      t.title = 'Hora del hipódromo: ' + t.textContent;
+      t.textContent = local;
+      cambio = true;
+    }
+  });
+  const h = document.querySelector('header p');
+  if (cambio && h) {
+    const p = document.createElement('p');
+    p.className = 'gc-zona';
+    p.textContent = 'Las horas están en tu zona horaria (' + Intl.DateTimeFormat().resolvedOptions().timeZone + '). Con el mouse sobre una hora se ve la del hipódromo.';
+    h.before(p);
+  }
+})();</script>
+JS;
+
+    /** Hora de una carrera, marcada para que JS_HORAS la pase a la zona del que mira. $zona: la del hipódromo. */
+    public static function hora(string $fecha, ?string $hora, string $zona = 'America/Montevideo'): string
+    {
+        if (!preg_match('/^(\d{1,2}):(\d{2})/', (string)$hora, $m)) {
+            return htmlspecialchars((string)$hora, ENT_QUOTES);
+        }
+        $t = (new \DateTimeImmutable($fecha, new \DateTimeZone($zona)))->setTime((int)$m[1], (int)$m[2]);
+        return '<time class="gc-hora" datetime="' . $t->format(DATE_ATOM) . '">' . sprintf('%02d:%s', $m[1], $m[2]) . '</time>';
     }
 
     /** "F 9 · E 4 · S 1": cuántos periodistas lo dan de favorito, enemigo y sorpresa. */
@@ -667,7 +708,8 @@ final class ProgramaNoOficial
 
     public static function nombreHipodromo(int $id): string
     {
-        return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha', 101 => 'Sha Tin', 102 => 'Happy Valley'][$id] ?? "Hipódromo $id";
+        return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha', 101 => 'Sha Tin', 102 => 'Happy Valley',
+            301 => 'Gávea', 302 => 'Cidade Jardim', 303 => 'Cristal', 304 => 'Tarumã', 305 => 'Madalena', 306 => 'Sorocaba'][$id] ?? "Hipódromo $id";
     }
 
     private static function siglaHipodromo(int $id): string
