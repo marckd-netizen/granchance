@@ -33,4 +33,18 @@ return [
         'pausa_segundos' => 1,
         'carpeta_crudos' => __DIR__ . '/raw/hk',
     ],
+    // Brasil (apostas.jcb.com.br): base aparte con sql/schema_br.sql. Ver bin/br_historico.php.
+    'br' => [
+        'db' => [
+            'dsn'      => 'mysql:host=localhost;dbname=granchance_br;charset=utf8mb4',
+            'usuario'  => 'granchance',
+            'clave'    => '',
+        ],
+        'pausa_segundos' => 0.5,
+        'carpeta_crudos' => __DIR__ . '/raw/br',
+        // Pestañas del raceday que se bajan (el resto son reuniones extranjeras que transmite el JCB).
+        'hipodromos' => ['Gávea', 'Cidade Jardim', 'Cristal', 'Tarumã', 'Madalena', 'Sorocaba'],
+        // Pestañas que son otra reunión de un hipódromo de la lista.
+        'alias' => ['Gávea Int' => 'Gávea', 'Gávea Extra' => 'Gávea'],
+    ],
 ];
