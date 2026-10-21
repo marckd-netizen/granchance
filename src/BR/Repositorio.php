@@ -133,8 +133,8 @@ final class Repositorio
                 tiempo_ganador = VALUES(tiempo_ganador), tiempo_ganador_seg = VALUES(tiempo_ganador_seg), retirados = VALUES(retirados),
                 comentario = VALUES(comentario)'
         )->execute([
-            $reunionId, $c['numero'], $c['premio'] ?? $res['premio'] ?? null, $c['tipo_prova'], $c['distancia'] ?? $res['distancia'] ?? null,
-            $hora === null ? null : "$fecha $hora", $c['hora_programa'], $c['superficie'] ?? $res['superficie'] ?? null, $c['pista'] ?? $res['pista'] ?? null,
+            $reunionId, $c['numero'], self::corto($c['premio'] ?? $res['premio'] ?? null, 150), self::corto($c['tipo_prova'], 60), $c['distancia'] ?? $res['distancia'] ?? null,
+            $hora === null ? null : "$fecha $hora", $c['hora_programa'], $c['superficie'] ?? $res['superficie'] ?? null, self::corto($c['pista'] ?? $res['pista'] ?? null, 40),
             $res['condicion'] ?? null, $res['recorde'] ?? null, $res['total_apostado'] ?? null,
             $ganador['posicion'] ?? null, ParserResultados::segundos($ganador['posicion'] ?? null),
             $retirados === [] ? null : implode(' ', $retirados), $res['comentario'] ?? null,
@@ -153,18 +153,19 @@ final class Repositorio
         );
         foreach ($c['actuaciones'] as $a) {
             $l = $llegada[self::clave($a['nombre'])] ?? null;
-            $puesto = $l['puesto'] ?? $a['puesto'];
+            // Puesto de la llegada; sin puesto o 28 (NCP, no completó el recorrido) queda lo del programa.
+            $lp = $l !== null && $l['puesto'] !== null && $l['puesto'] < 25 ? $l['puesto'] : null;
             $criador = $l['criador'] ?? null;
             $insAct->execute([
                 $carreraId, $this->caballo($fecha, $a, $criador === null ? null : $this->persona('criador', $criador)),
-                $a['forfait'] ? null : $puesto, $a['forfait'] ? 'forfait' : ($l !== null ? $l['puesto'] . 'º' : $a['puesto_texto']),
+                $a['forfait'] ? null : ($lp ?? $a['puesto']), $a['forfait'] ? 'forfait' : ($lp !== null ? $lp . 'º' : $a['puesto_texto']),
                 $a['numero'], $a['peso_caballo'], $a['forfait'] ? 'forfait' : null, $a['estreante'] ? 1 : 0,
                 $this->persona('jockey', $a['jockey']), $a['aprendiz'], $this->persona('cuidador', $a['cuidador']), $this->persona('stud', $a['stud']),
                 $a['peso_asignado'], $a['peso_real'], $a['peso_texto'],
-                $l !== null && $l['puesto'] !== 1 ? $l['posicion'] : null,
+                $lp !== null && $lp !== 1 ? $l['posicion'] : null,
                 $a['cuota'] ?? $l['cuota'] ?? null,
-                $l !== null && $l['puesto'] === 1 ? $l['posicion'] : null,
-                $l !== null && $l['puesto'] === 1 ? ParserResultados::segundos($l['posicion']) : null,
+                $lp === 1 ? $l['posicion'] : null,
+                $lp === 1 ? ParserResultados::segundos($l['posicion']) : null,
                 !empty($l['favorito']) ? 1 : 0,
             ]);
         }
@@ -217,6 +218,11 @@ final class Repositorio
             $this->personas[$clave] = (int)$this->db->lastInsertId();
         }
         return $this->personas[$clave];
+    }
+
+    private static function corto(?string $t, int $largo): ?string
+    {
+        return $t === null ? null : mb_substr($t, 0, $largo);
     }
 
     private static function clave(string $nombre): string

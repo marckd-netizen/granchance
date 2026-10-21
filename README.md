@@ -258,9 +258,12 @@ Diferencias con Uruguay:
   de una reunión por hipódromo y día (Gávea Int). También `penetrometro_vf` / `penetrometro_pr` (cm) y el total apostado.
 - `caballo` es el mismo si coinciden nombre y generación (`anio_nac`, deducido de la edad: en Brasil cumplen años el 1º de julio).
   El nombre queda tal cual, con el sufijo de país o las marcas que use cada hipódromo ("SNAP DECISION-ARG", "UVA DO XIMBO (A)").
-- Hasta mediados de 2015 el JCB publicaba solo los 5 primeros puestos (el resto queda con `puesto` NULL); después, la llegada completa
-  con los cuerpos al ganador en `dist_acumulada` ("Focinho", "1/2", "3 3/4"...). Forfaits: `retiro_motivo` = 'forfait', sin puesto.
-- `peso_asignado` y `peso_real`: "57/6 kg" es 57 asignado y 56 llevado (descargo de aprendiz `Ap1`..`Ap4` en `aprendiz`, o sobrepeso).
+- En algunas reuniones (más en los primeros años) el JCB publica solo los 5 primeros puestos y el resto queda con `puesto` NULL;
+  en las demás, la llegada completa con los cuerpos al ganador en `dist_acumulada` ("Focinho", "1/2", "3 3/4", "Vários"...).
+  Forfaits: `retiro_motivo` = 'forfait', sin puesto. NCP (no completó el recorrido): `puesto_texto` = 'NCP', sin puesto.
+- Unas pocas carreras traen el tiempo mal cargado en el origen ("0s c", "1m 85s 90c"); "0s" queda NULL, el resto tal cual.
+- `peso_asignado` y `peso_real`: "57/6 kg" es 57 asignado y 56 llevado (descargo de aprendiz `Ap1`..`Ap4` en `aprendiz`, o sobrepeso);
+  "60/56 kg", con el llevado completo. El texto original queda en `peso_texto`.
 - `actuacion.cuota` es el rateio a ganador (por R$1) de cada caballo; los dividendos del "Resultado por modalidade" están en `apuesta`
   (Vencedor, Placê, Dupla, Exata, Trifeta, Quadrifeta...). `favorito` marca el favorito del resultado completo.
 - `carrera.tipo_prova` (Normal, Claiming D, Grupo I, Listed, Índice Técnico...), `hora` real de largada y `hora_programa`,

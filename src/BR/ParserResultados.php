@@ -105,7 +105,7 @@ final class ParserResultados
         }
         $puesto = self::entero($td[0]);
         [$jockey, $aprendiz] = self::jockey($td[11]);
-        [$asignado, $real] = self::pesos($td[12]);
+        [$asignado, $real] = self::pesos($td[12], $aprendiz !== null);
         return [
             'numero' => self::entero($td[2]),
             'puesto' => $puesto !== null && $puesto < 99 && preg_match('/^\d+º?$/u', $td[1]) ? $puesto : null,
@@ -209,7 +209,7 @@ final class ParserResultados
         if (($m[3] ?? '') !== '') {
             $s += isset($m[4]) && $m[4] !== '' ? (int)$m[3] / (int)$m[4] : (int)$m[3] / 100;
         }
-        return round($s, 2);
+        return $s > 0 ? round($s, 2) : null;      // "0s c": sin tiempo
     }
 
     /** Año de nacimiento (generación): en Brasil los caballos cumplen años el 1º de julio. */
@@ -240,10 +240,11 @@ final class ParserResultados
 
     /**
      * "57 kg" → [57, 57]; "57/6 kg" → [57, 56]: después de la barra, lo que carga (descargo de aprendiz o sobrepeso), con
-     * solo la última cifra si comparte la decena; "60/56 kg" → [60, 56]; "55,5/6 kg" → [55.5, 56].
+     * solo la última cifra (la decena es la más cercana al asignado; con aprendiz, se prefiere el descargo);
+     * "60/56 kg" → [60, 56]; "55,5/6 kg" → [55.5, 56]; "58/2 kg" de un Ap4 → [58, 52].
      * @return array{0: ?float, 1: ?float}
      */
-    private static function pesos(string $t): array
+    private static function pesos(string $t, bool $aprendiz): array
     {
         if (!preg_match('/^(\d+(?:[,.]\d+)?)(?:\s*\/\s*(\d+(?:[,.]\d+)?))?/', trim($t), $m)) {
             return [null, null];
@@ -256,11 +257,14 @@ final class ParserResultados
         if ($b >= 10) {
             return [$asig, $b];
         }
-        $real = floor($asig / 10) * 10 + $b;
-        if ($real - $asig > 5) {
-            $real -= 10;
-        } elseif ($asig - $real > 8) {
-            $real += 10;
+        $real = null;
+        foreach ([-10, 0, 10] as $d) {
+            $c = floor($asig / 10) * 10 + $d + $b;
+            // Con aprendiz se prefiere el descargo (hasta 7 kg) antes que un sobrepeso.
+            $dist = abs($c - $asig) + ($aprendiz && $c > $asig ? 3 : 0);
+            if ($real === null || $dist < abs($real - $asig) + ($aprendiz && $real > $asig ? 3 : 0)) {
+                $real = $c;
+            }
         }
         return [$asig, $real];
     }
