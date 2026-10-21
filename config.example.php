@@ -33,4 +33,15 @@ return [
         'pausa_segundos' => 1,
         'carpeta_crudos' => __DIR__ . '/raw/hk',
     ],
+    // Argentina (Stud Book Argentino: Palermo, San Isidro, La Plata y los del interior): base aparte con sql/schema_ar.sql.
+    // Ver bin/ar_historico.php.
+    'ar' => [
+        'db' => [
+            'dsn'      => 'mysql:host=localhost;dbname=granchance_ar;charset=utf8mb4',
+            'usuario'  => 'granchance',
+            'clave'    => '',
+        ],
+        'pausa_segundos' => 1,
+        'carpeta_crudos' => __DIR__ . '/raw/ar',
+    ],
 ];

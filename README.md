@@ -224,3 +224,44 @@ Qué cambia respecto de Uruguay:
 - El programa muestra además rating y su cambio, banda de rating de la carrera, riel, equipo (avisa la primera vez con
   anteojeras, capucha...), peso del caballo, posiciones en cada tramo, la cuota final de cada antecedente y la chaquetilla oficial.
 - Debutantes: sin carreras en HK. Los PPG llegan con campaña en el exterior que la base no tiene.
+
+## Argentina (Stud Book Argentino: Palermo, San Isidro, La Plata y el interior)
+
+Baja los resultados de [studbook.org.ar](https://www.studbook.org.ar/reuniones) a una base aparte, `granchance_ar`, con las mismas
+tablas y columnas que la de Uruguay, más los ids del Stud Book.
+
+```sh
+mysql -u root -p -e "CREATE DATABASE granchance_ar CHARACTER SET utf8mb4"
+mysql -u root -p granchance_ar < sql/schema_ar.sql
+# completar la sección 'ar' de config.php (ver config.example.php)
+```
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/ar_historico.php --desde=2015-01-01 [--hasta=AAAA-MM-DD] [--parte=0/3]` | Lee el calendario del Stud Book mes a mes y baja cada reunión de todos los hipódromos. Reanudable; `--parte=i/n` reparte las reuniones entre n procesos. |
+| `php bin/ar_diario.php [--dias=3]` | Vuelve a bajar las reuniones de los últimos días sin usar los crudos (distanciados, correcciones). Para cron. |
+| `php bin/ar_caballos.php [--parte=0/4]` | Completa país, fecha de nacimiento, padre, madre, abuelo materno y criador con la ficha de cada ejemplar. |
+| `php bin/ar_parsear.php --id=16141 --slug=20150102-san-isidro-1 [--carrera=1]` | Muestra en JSON lo que se lee de una reunión, sin tocar la base. |
+
+Cron sugerido: `0 8 * * * cd /home/USUARIO/granchance && php bin/ar_diario.php && php bin/ar_caballos.php >> raw/ar/diario.log 2>&1`
+
+- El calendario (`/reuniones?anio=AAAA&mes=MM`) trae el enlace de cada reunión (`/reuniones/detalle/16141/20150102-san-isidro-1`);
+  sin la parte final (el "slug") la página da 404, por eso se guarda en `descarga.slug`. Los hipódromos se dan de alta solos.
+- Una página por reunión con todas las carreras. Con 1 s entre pedidos, ~1 s por reunión. El sitio responde 403 si el
+  User-Agent no es de un navegador.
+- Los crudos quedan en `raw/ar/AAAA/MM/<slug>_<id>.html.gz` (~25 KB) y las fichas en `raw/ar/ejemplares/NNN/<id>.html.gz`.
+
+Diferencias con Uruguay:
+
+- `caballo`, `persona` y `reunion` se identifican por el id del Stud Book (`sb_id`, `persona.codigo`), no por el nombre.
+  Los criadores tienen un código alfanumérico. `caballo.slug` hace falta para pedir la ficha.
+- `caballo.anio_nac` sale de la fecha de nacimiento (recuadro del ganador o ficha) o, si no, de la edad: en Argentina cumplen el 1º de julio.
+- `actuacion.gatera` es la columna O (número del partidor). `marca` son las herraduras (columna H) y `tratamiento` la columna T;
+  las dos aparecen en las reuniones recientes.
+- `actuacion.sport` es la columna Pago: dividendo a ganador por $1. El Stud Book no publica placé ni apuestas combinadas (`apuesta` queda vacía).
+- `dist_anterior` es siempre la distancia con el caballo de adelante: hasta ~2018 el Stud Book la mostraba corrida una fila (con el de atrás) y se corrige al leer.
+- Los que no llegaron tienen `puesto` NULL y el código en `puesto_texto` (RD rodó, DM desmontó, NL no largó, DP distanciado, o un
+  número mayor que la cantidad de participantes). Los retirados figuran con `retiro_motivo = 'retirado'` y `puesto_texto = 'Ret.'`.
+- `carrera.categoria` (Condicional, Handicap, Clasico Grupo I...), `grupo` (G1, G2, G3, L, de la categoría o del nombre del premio), `recorrido`
+  (Codo, Codo Nuevo, Recta, Diagonal), `pista` es el estado (Normal, Humeda, Pesada, Fangosa), `bolsa` en pesos y `bolsa_dolares`.
+- Solo hay tiempo del ganador (`carrera.tiempo_ganador` y en su `actuacion`). No publica parciales, viento ni total apostado.
