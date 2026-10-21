@@ -52,3 +52,50 @@ CREATE TABLE IF NOT EXISTS record_distancia (
   carreras     INT UNSIGNED NOT NULL,          -- cuántas carreras confirman el dato
   PRIMARY KEY (hipodromo_id, superficie, record, distancia)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Coeficientes del modelo de probabilidad de ganar (src/Modelo.php); los recalcula bin/modelo.php.
+CREATE TABLE IF NOT EXISTS modelo_coef (
+  variable     VARCHAR(40) PRIMARY KEY,
+  media        DOUBLE NOT NULL,                -- para estandarizar la variable
+  desvio       DOUBLE NOT NULL,
+  coeficiente  DOUBLE NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Equivalencia entre hipódromos (km/h): cuánto más alto da el índice ahí que en Maroñas con los mismos caballos.
+-- Sale de los caballos que corrieron en dos hipódromos con 90 días o menos de diferencia (Velocidades::equivalencia).
+CREATE TABLE IF NOT EXISTS equivalencia_hipodromo (
+  hipodromo_id SMALLINT UNSIGNED PRIMARY KEY,
+  ajuste       DECIMAL(6,3) NOT NULL,
+  pares        INT UNSIGNED NOT NULL           -- caballos que pasaron de ese hipódromo a otro o al revés
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Studs registrados en el Stud Book Uruguayo con la descripción de sus colores (bin/studs.php). studbook_id es el
+-- número interno del Stud Book; clave es Personas::clave(nombre), para cruzarlo con persona (tipo 'stud').
+CREATE TABLE IF NOT EXISTS stud_colores (
+  studbook_id INT UNSIGNED PRIMARY KEY,
+  nombre      VARCHAR(120) NOT NULL,
+  clave       VARCHAR(120) NOT NULL,
+  colores     VARCHAR(400) NULL,
+  KEY (clave)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Pronósticos del concurso de prensa de Maroñas y Las Piedras (Prensa, bin/prensa.php). carrera es el número de la
+-- carrera en la reunión; caballo viene cortado a 9 letras, como lo publica el concurso. pronosticador 'Promedios' es el
+-- consenso que calcula el propio concurso.
+CREATE TABLE IF NOT EXISTS prensa_pronostico (
+  hipodromo_id  SMALLINT UNSIGNED NOT NULL,
+  fecha         DATE NOT NULL,
+  carrera       TINYINT UNSIGNED NOT NULL,
+  pronosticador VARCHAR(80) NOT NULL,
+  tipo          ENUM('Favorito','Enemigo','Sorpresa') NOT NULL,
+  caballo       VARCHAR(30) NOT NULL,
+  KEY (hipodromo_id, fecha, carrera)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Cómo se combina la probabilidad del modelo con los votos de la prensa en cada hipódromo (Prensa::combinar).
+CREATE TABLE IF NOT EXISTS prensa_coef (
+  hipodromo_id SMALLINT UNSIGNED NOT NULL,
+  variable     VARCHAR(20) NOT NULL,
+  coeficiente  DOUBLE NOT NULL,
+  PRIMARY KEY (hipodromo_id, variable)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

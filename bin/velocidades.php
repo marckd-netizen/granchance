@@ -11,7 +11,11 @@ $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['cla
 $db->exec(file_get_contents(__DIR__ . '/../sql/velocidades.sql'));
 
 $r = (new Velocidades($db))->recalcular();
-registro("{$r['carreras']} carreras clasificadas, {$r['pares']} pares y {$r['ajustes']} ajustes calculados");
+registro("{$r['carreras']} carreras clasificadas, {$r['pares']} pares, {$r['ajustes']} ajustes y {$r['equivalencias']} equivalencias calculados");
+echo "Equivalencia entre hipódromos (km/h que da de más el índice respecto de Maroñas con los mismos caballos):\n";
+foreach ($db->query('SELECT hipodromo_id, ajuste, pares FROM equivalencia_hipodromo ORDER BY ajuste') as $e) {
+    printf("  %-14s %+5.2f  (%d pases)\n", GranChance\ProgramaNoOficial::nombreHipodromo((int)$e['hipodromo_id']), $e['ajuste'], $e['pares']);
+}
 
 if (isset($opc['mostrar'])) {
     $hip = (int)$opc['mostrar'];

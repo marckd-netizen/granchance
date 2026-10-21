@@ -44,6 +44,16 @@ final class Cliente
         return str_contains($html, 'race_table') ? $html : null;
     }
 
+    /**
+     * Programa oficial (Race Card) de una carrera: se pide siempre (cambia hasta la largada: retirados, jockeys, pesos),
+     * y queda guardado en la carpeta de la reunión como programa_NN.html.gz.
+     */
+    public function programa(string $fecha, string $hip, int $nro): string
+    {
+        $url = self::BASE . 'racecard?racedate=' . str_replace('-', '/', $fecha) . "&Racecourse=$hip&RaceNo=$nro";
+        return $this->pagina($url, $this->carpeta($fecha, $hip) . sprintf('/programa_%02d.html.gz', $nro), false, 'commContent');
+    }
+
     /** Ficha de un caballo (país, pelaje, sexo, padres, propietario). */
     public function caballo(string $codigo, bool $usarCache = true): string
     {
