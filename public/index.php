@@ -62,10 +62,23 @@ foreach ($pasadas as $r) {
 }
 
 $variosPaises = count($paises) > 1 && $pais === null;
-$fila = function (array $r) use ($e, $dias, $variosPaises): string {
+// Banderas en SVG (los emoji de bandera no se ven en Windows), de 3:2. Un país sin bandera queda con el nombre.
+$sol = fn (string $c, float $x, float $y, float $r) => '<circle cx="' . $x . '" cy="' . $y . '" r="' . $r . '" fill="' . $c . '"/>';
+$banderas = [
+    'Uruguay' => '<rect width="27" height="18" fill="#fff"/><path d="M10 2h17M10 6h17M0 10h27M0 14h27" stroke="#0038a8" stroke-width="2"/>'
+        . $sol('#fcd116', 5, 5, 3),
+    'Argentina' => '<rect width="27" height="18" fill="#74acdf"/><rect y="6" width="27" height="6" fill="#fff"/>' . $sol('#f6b40e', 13.5, 9, 1.8),
+    'Brasil' => '<rect width="27" height="18" fill="#009c3b"/><path d="M13.5 2 25 9 13.5 16 2 9z" fill="#ffdf00"/>' . $sol('#002776', 13.5, 9, 3.6),
+    'Hong Kong' => '<rect width="27" height="18" fill="#de2910"/><g fill="#fff">'
+        . implode('', array_map(fn ($a) => '<ellipse cx="13.5" cy="6.3" rx="1.6" ry="2.9" transform="rotate(' . $a . ' 13.5 9)"/>', [0, 72, 144, 216, 288])) . '</g>',
+];
+$bandera = fn (string $p) => isset($banderas[$p])
+    ? '<svg class="bandera" viewBox="0 0 27 18" role="img" aria-label="' . $e($p) . '"><title>' . $e($p) . '</title>' . $banderas[$p] . '</svg>'
+    : '<small>' . $e($p) . '</small>';
+$fila = function (array $r) use ($e, $dias, $variosPaises, $bandera): string {
     $t = strtotime($r['fecha']);
     $o = '<tr><td>' . $dias[(int)date('w', $t)] . ' ' . date('d/m', $t) . '</td><td>' . $e($r['nombre'])
-        . ($variosPaises ? ' <small>' . $e($r['pais']) . '</small>' : '') . '</td><td>'
+        . ($variosPaises ? ' ' . $bandera($r['pais']) : '') . '</td><td>'
         . ($r['programa'] ? '<a href="' . $e($r['programa']) . '">Programa</a>' : '') . '</td><td>';
     if ($r['resultado']) {
         $o .= '<a href="' . $e($r['resultado']) . '">Predicción vs resultado</a>';
@@ -106,6 +119,7 @@ td:first-child { white-space:nowrap; width:9em; } td:nth-child(2) { width:9em; }
 .filtro .pais { font-weight:600; }
 .filtro .hips { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 0 18px; padding-left:10px; border-left:2px solid var(--linea); }
 .proximas td { background:var(--cabecera); }
+.bandera { width:21px; height:14px; vertical-align:-2px; margin-left:2px; border-radius:2px; box-shadow:0 0 0 1px var(--linea); }
 details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:14px 0 4px; }
 </style>
 </head>
