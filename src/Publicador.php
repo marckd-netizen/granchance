@@ -774,7 +774,9 @@ final class Publicador
         file_put_contents($carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'analytics' => $analytics, 'reuniones' => array_values($reuniones)],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-        // Estadísticas: total, por hipódromo y por mes; las predicciones reconstruidas van aparte.
+        // Estadísticas: total, por hipódromo y por mes; las predicciones reconstruidas van aparte. Solo las reuniones con su
+        // página de resultado publicada: si se borra la página, la reunión deja de contar.
+        $resumen = array_intersect_key($resumen, array_filter($reuniones, fn ($r) => $r['resultado'] !== null));
         $grupos = [];
         $niveles = [];
         foreach ($resumen as $k => $r) {
@@ -824,8 +826,40 @@ final class Publicador
                     . self::tablaAcierto(array_map(fn ($n, $ms) => [$n, self::sumar($ms)], array_keys($porNivel), $porNivel), true);
             }
         }
-        file_put_contents($carpeta . '/resultados/estadisticas.html', $o . '</body></html>');
+        file_put_contents($carpeta . '/resultados/estadisticas.html', $o . self::JS_ORDENAR . '</body></html>');
     }
+
+    /**
+     * Ordenar las tablas de acierto con un clic en la cabecera (otro clic invierte el orden). Las columnas con porcentaje
+     * se ordenan por el porcentaje; los retornos, por el importe; la primera, por el texto.
+     */
+    private const JS_ORDENAR = <<<'JS'
+<script>
+document.querySelectorAll('table.acierto').forEach(t => {
+  const valor = td => {
+    const s = td.textContent, p = s.match(/\(([\d.,]+) %\)/), n = (p ? p[1] : s).replace(/[$\s.]/g, '').replace(',', '.');
+    return n !== '' && !isNaN(n) ? parseFloat(n) : null;
+  };
+  t.querySelectorAll('thead th').forEach((th, i) => {
+    th.style.cursor = 'pointer';
+    th.title = 'Ordenar';
+    th.addEventListener('click', () => {
+      const asc = th.dataset.orden ? th.dataset.orden !== 'asc' : i === 0;   // el primer clic: números de mayor a menor
+      t.querySelectorAll('thead th').forEach(x => { delete x.dataset.orden; x.textContent = x.textContent.replace(/ [▲▼]$/, ''); });
+      th.dataset.orden = asc ? 'asc' : 'desc';
+      th.textContent += asc ? ' ▲' : ' ▼';
+      const filas = [...t.tBodies[0].rows];
+      filas.sort((a, b) => {
+        const x = valor(a.cells[i]), y = valor(b.cells[i]);
+        const c = x !== null && y !== null ? x - y : a.cells[i].textContent.localeCompare(b.cells[i].textContent, 'es', {numeric: true});
+        return asc ? c : -c;
+      });
+      filas.forEach(f => t.tBodies[0].appendChild(f));
+    });
+  });
+});
+</script>
+JS;
 
     /** Las categorías de Japón (JP\Publicador las guarda como las escribe la JRA) en español; las de obstáculos (J.G1...) van juntas. */
     private const NIVELES_JP = ['Listed' => 'Listado', 'Open' => 'Abierta', '3 Win' => 'Ganadores de 3', '2 Win' => 'Ganadores de 2',
