@@ -324,7 +324,7 @@ final class ProgramaNoOficial
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
         }
-        return $o . ProgramaUy::JS_HORAS . '</body></html>';
+        return $o . ProgramaUy::JS_HORAS . ProgramaUy::JS_ANCHO . '</body></html>';
     }
 
     private function htmlCarrera(array $c, \Closure $e): string
