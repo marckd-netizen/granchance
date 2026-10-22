@@ -785,6 +785,7 @@ final class Publicador
             $grupos[$tipo]['pais:' . self::pais((int)$hip)][] = $r;
             $grupos[$tipo][substr($fecha, 0, 7)][] = $r;
             foreach ($r['niveles'] ?? [] as $nivel => $m) {
+                $nivel = self::NIVELES_JP[$nivel] ?? (str_starts_with((string)$nivel, 'J.') ? 'Obstáculos' : $nivel);
                 $niveles[$tipo][ProgramaNoOficial::nombreHipodromo((int)$hip)][$nivel][] = $m;
             }
         }
@@ -805,8 +806,14 @@ final class Publicador
                     $total[substr($k, 5)] = $rs;
                 }
             }
-            uksort($filas, fn ($a, $b) => [ctype_digit($a[0]), $b] <=> [ctype_digit($b[0]), $a]);
-            $o .= self::tablaAcierto(array_map(fn ($n, $rs) => [$n, self::sumar($rs)], array_keys($total + $filas), $total + $filas), true);
+            // Tres tablas: el total y cada país, cada hipódromo (A-Z) y cada mes (el más reciente primero).
+            $meses = array_filter($filas, fn ($k) => ctype_digit(((string)$k)[0]), ARRAY_FILTER_USE_KEY);
+            $hipodromos = array_diff_key($filas, $meses);
+            ksort($hipodromos);
+            krsort($meses);
+            $tabla = fn (array $g) => self::tablaAcierto(array_map(fn ($n, $rs) => [$n, self::sumar($rs)], array_keys($g), $g), true);
+            $o .= '<h3>' . (count($total) > 1 ? 'Por país' : 'Total') . '</h3>' . $tabla($total)
+                . '<h3>Por hipódromo</h3>' . $tabla($hipodromos) . '<h3>Por mes</h3>' . $tabla($meses);
             // Por categoría de carrera, una tabla por hipódromo (las de más carreras primero).
             $porHip = $niveles[$tipo] ?? [];
             uasort($porHip, fn ($a, $b) => array_sum(array_map(fn ($ms) => array_sum(array_column($ms, 'carreras')), $b))
@@ -820,11 +827,15 @@ final class Publicador
         file_put_contents($carpeta . '/resultados/estadisticas.html', $o . '</body></html>');
     }
 
+    /** Las categorías de Japón (JP\Publicador las guarda como las escribe la JRA) en español; las de obstáculos (J.G1...) van juntas. */
+    private const NIVELES_JP = ['Listed' => 'Listado', 'Open' => 'Abierta', '3 Win' => 'Ganadores de 3', '2 Win' => 'Ganadores de 2',
+        '1 Win' => 'Ganadores de 1', 'Maiden' => 'Perdedores', 'Newcomer' => 'Debutantes'];
+
     /** Orden de las categorías: de las más importantes a las más bajas. */
     private static function ordenNivel(string $nivel): int
     {
-        $orden = ['G1', 'G2', 'G3', 'Listado', 'Clásico', 'Especial', 'Handicap', 'Preferencial', 'Condicional',
-            'Ganadores de 4+', 'Ganadores de 3', 'Ganadores de 2', 'Ganadores de 1', 'Perdedores', 'Cuarto de milla', 'Otras'];
+        $orden = ['G1', 'G2', 'G3', 'Listado', 'Abierta', 'Clásico', 'Especial', 'Handicap', 'Preferencial', 'Condicional',
+            'Ganadores de 4+', 'Ganadores de 3', 'Ganadores de 2', 'Ganadores de 1', 'Perdedores', 'Debutantes', 'Obstáculos', 'Cuarto de milla', 'Otras'];
         $i = array_search($nivel, $orden, true);
         return $i === false ? count($orden) : $i;
     }
