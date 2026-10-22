@@ -70,7 +70,7 @@ final class ParserPrograma
         $num = $col(['hs', 'no', 'horseno']);
         $ped = $pedigri[$codigo] ?? [];
         return [
-            'codigo' => $codigo, 'nombre' => $nombre, 'pais' => $pais,
+            'codigo' => $codigo, 'nombre' => ParserResultados::mayusculas($nombre), 'pais' => $pais,
             'numero' => ctype_digit($num) ? (int)$num : null,
             'cuadro' => ctype_digit($col(['bk', 'bracket'])) ? (int)$col(['bk', 'bracket']) : null,
             'sexo' => preg_match('/^([A-Z])\s*(\d+)$/', $sexoEdad, $m) ? $m[1] : null,
@@ -80,8 +80,8 @@ final class ParserPrograma
             'cuidador' => ($ped['cuidador'] ?? null) ?: ($col(['trainer']) ?: null),
             'propietario' => $ped['propietario'] ?? (($col(['owner']) ?: null)),
             'criador' => $ped['criador'] ?? null,
-            'padre' => $ped['padre'] ?? (($col(['sire']) ?: null)),
-            'madre' => $ped['madre'] ?? (($col(['dam']) ?: null)),
+            'padre' => $ped['padre'] ?? ParserResultados::mayusculas($col(['sire']) ?: null),
+            'madre' => $ped['madre'] ?? ParserResultados::mayusculas($col(['dam']) ?: null),
             'abuelo_materno' => $ped['abuelo_materno'] ?? null,
             'retirado' => (bool)preg_match('/\b(Scratched|Excluded|Cancel+ed|SCR|Withdrawn)\b/i', $fila),
         ];
