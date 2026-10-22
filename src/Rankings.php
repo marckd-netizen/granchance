@@ -15,7 +15,7 @@ use PDO;
  */
 final class Rankings
 {
-    /** de => [título, expresión que agrupa, ficha a la que enlaza (o null)] */
+    /** de => [título, expresión que agrupa, ficha a la que enlaza] */
     public const TIPOS = [
         'caballos' => ['Caballos', 'a.caballo_id', 'caballo'],
         'potrillos' => ['Potrillos', 'a.caballo_id', 'caballo'],
@@ -23,9 +23,9 @@ final class Rankings
         'cuidadores' => ['Cuidadores', 'a.cuidador_id', 'cuidador'],
         'studs' => ['Studs', 'a.stud_id', 'stud'],
         'criadores' => ['Criadores', 'ca.criador_id', 'criador'],
-        'padrillos' => ['Padrillos', 'ca.padre', null],
-        'madres' => ['Madres', 'ca.madre', null],
-        'abuelos' => ['Abuelos maternos', 'ca.abuelo_materno', null],
+        'padrillos' => ['Padrillos', 'ca.padre', 'padrillo'],
+        'madres' => ['Madres', 'ca.madre', 'madre'],
+        'abuelos' => ['Abuelos maternos', 'ca.abuelo_materno', 'abuelo'],
     ];
     private const COLUMNAS = ['nombre' => 'Nombre', 'caballos' => 'Caballos', 'corridas' => 'Carreras', 'ganadas' => '1º', 'pct_gan' => '% gan.',
         'top3' => '1º a 3º', 'pct_top3' => '% 1º a 3º', 'vel' => 'Vel. prom.', 'premios' => 'Premios', 'ultima' => 'Última'];
@@ -335,8 +335,8 @@ final class Rankings
         $o .= '</tr></thead><tbody>';
         foreach ($filas as $i => $r) {
             $nombre = $e($r['nombre']);
-            $nombre = $ficha ? '<a href="' . $e(Fichas::url($ficha, (int)$r['clave'], (string)$r['nombre'], self::FICHAS[$this->pais()] ?? null)) . '">' . $nombre . '</a>'
-                : ($this->pais() ? $nombre : '<a href="/buscar?q=' . rawurlencode((string)$r['nombre']) . '">' . $nombre . '</a>');
+            $nombre = isset(Fichas::LINEAS[$ficha]) ? Fichas::enlazarLinea($ficha, (string)$r['nombre'], self::FICHAS[$this->pais()] ?? null)
+                : '<a href="' . $e(Fichas::url($ficha, (int)$r['clave'], (string)$r['nombre'], self::FICHAS[$this->pais()] ?? null)) . '">' . $nombre . '</a>';
             $o .= '<tr><td class="num">' . ($i + 1) . '</td><td>' . $nombre . (!empty($r['pais']) && $r['pais'] !== ($this->ar ? 'ARG' : 'URU') && !str_ends_with((string)$r['nombre'], ')') ? ' <small>(' . $e($r['pais']) . ')</small>' : '') . '</td>';
             if (in_array($de, ['caballos', 'potrillos'], true)) {
                 $o .= '<td>' . $e($this->hk ? $r['sexo'] : (['m' => 'M', 'h' => 'H', 'c' => 'C'][strtolower((string)$r['sexo'])] ?? '')) . '</td><td>' . $e(($this->ar ? self::PELAJES_AR : self::PELAJES)[strtolower((string)$r['pelaje'])] ?? $r['pelaje']) . '</td><td class="num">'

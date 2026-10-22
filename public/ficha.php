@@ -1,8 +1,8 @@
 <?php
-// Fichas de caballos, jockeys, cuidadores, studs y criadores (/caballo/123-nombre, /jockey/45-nombre...), el buscador
-// (/buscar?q=...) y los rankings (/ranking/caballos...), ver .htaccess. A diferencia de index.php, lee la base: en cPanel,
-// bin/publicar.php deja junto a esta página .granchance.php con la carpeta del proyecto (fuera de public_html) para
-// encontrar la configuración.
+// Fichas de caballos, jockeys, cuidadores, studs, criadores, padrillos, madres y abuelos maternos (/caballo/123-nombre,
+// /jockey/45-nombre, /padrillo/nombre...), el buscador (/buscar?q=...) y los rankings (/ranking/caballos...), ver .htaccess.
+// A diferencia de index.php, lee la base: en cPanel, bin/publicar.php deja junto a esta página .granchance.php con la
+// carpeta del proyecto (fuera de public_html) para encontrar la configuración.
 declare(strict_types=1);
 date_default_timezone_set('America/Montevideo');
 
@@ -38,12 +38,14 @@ try {
         }
         return $f;
     };
+    // Los padrillos, madres y abuelos maternos van por el nombre (/padrillo/village-king), el resto por el id.
+    $id = isset(GranChance\Fichas::LINEAS[$tipo]) ? (string)($_GET['nombre'] ?? '') : (int)($_GET['id'] ?? 0);
     $html = match (true) {
         $tipo === 'buscar' => $fichas->buscar((string)($_GET['q'] ?? ''), $otrasFichas($bases)),
         $tipo === 'ranking' && empty($_GET['de']) => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null))->indice(),
         $tipo === 'ranking' => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null))->pagina((string)$_GET['de'], $_GET),
-        $pais !== null => isset($bases[$pais]) ? (new GranChance\Fichas($bases[$pais], __DIR__, $pais))->pagina($tipo, (int)($_GET['id'] ?? 0), isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null) : null,
-        default => $fichas->pagina($tipo, (int)($_GET['id'] ?? 0), isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null),
+        $pais !== null => isset($bases[$pais]) ? (new GranChance\Fichas($bases[$pais], __DIR__, $pais))->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null) : null,
+        default => $fichas->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null),
     };
 } catch (Throwable $e) {
     error_log('ficha.php: ' . $e->getMessage());

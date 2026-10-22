@@ -280,8 +280,8 @@ final class Publicador
 
     /**
      * Enlaza en el programa cada caballo, jockey, cuidador y stud con su ficha (/caballo/..., /jockey/..., etc.):
-     * el nombre en el título de cada caballo y en el resumen de la carrera, y debajo el jockey, el cuidador, el stud y
-     * el criador (que el programa no trae: sale de la base).
+     * el nombre en el título de cada caballo y en el resumen de la carrera, y debajo el jockey, el cuidador, el stud,
+     * el criador (que el programa no trae: sale de la base), el padrillo y la madre.
      */
     private function enlazarFichas(string $html, array $p): string
     {
@@ -325,6 +325,13 @@ final class Publicador
                 // El programa no trae el criador: va en la base, junto al caballo.
                 if ($l['criador'] && ($q = strpos($bloque, ' · Gatera: ')) !== false) {
                     $bloque = substr_replace($bloque, ' · Criador: ' . $a($l['criador'][1], $e($l['criador'][0])), $q, 0);
+                }
+                // El pedigrí ("Orb y Estrella"): el padrillo y la madre con su ficha, si tienen hijos en la base.
+                $ped = ' · ' . $e($h['pedigri']) . '</p>';
+                if ($h['pedigri'] && ($q = strpos($bloque, $ped)) !== false) {
+                    [$padre, $madre] = array_map('trim', explode(' y ', (string)$h['pedigri'], 2)) + [1 => ''];
+                    $enlace = fn (string $tipo, string $n) => $n !== '' && $this->fichas()->nombres($tipo, Fichas::slugLinea($n)) ? $a(Fichas::urlLinea($tipo, $n), $e($n)) : $e($n);
+                    $bloque = substr_replace($bloque, ' · ' . $enlace('padrillo', $padre) . ($madre !== '' ? ' y ' . $enlace('madre', $madre) : '') . '</p>', $q, strlen($ped));
                 }
                 $sec = substr_replace($sec, $bloque, $pos, $largo);
             }
