@@ -514,11 +514,11 @@ final class Fichas
         return self::enlazar($tipo, $id ? (int)$id : null, $nombre, $this->pais);
     }
 
-    /** El nombre con el enlace a su ficha (si tiene id), para las fichas y los programas de cada país. */
+    /** El nombre con el enlace a su ficha (si tiene id), para las fichas y los programas de cada país (a.ficha: como texto, subrayado de puntos). */
     public static function enlazar(string $tipo, ?int $id, ?string $nombre, ?string $pais = null): string
     {
         $n = htmlspecialchars((string)$nombre, ENT_QUOTES);
-        return $id ? '<a href="' . htmlspecialchars(self::url($tipo, $id, (string)$nombre, $pais), ENT_QUOTES) . '">' . $n . '</a>' : $n;
+        return $id ? '<a class="ficha" href="' . htmlspecialchars(self::url($tipo, $id, (string)$nombre, $pais), ENT_QUOTES) . '">' . $n . '</a>' : $n;
     }
 
     private ?array $colores = null;
