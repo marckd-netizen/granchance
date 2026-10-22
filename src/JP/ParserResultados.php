@@ -192,7 +192,7 @@ final class ParserResultados
         $pos = array_map(fn($i) => self::texto($tds[$i]), [6, 7, 8, 9]);
         return [
             'codigo' => $enlace instanceof DOMElement ? trim($enlace->getAttribute('horseno')) : null,
-            'nombre' => $nombre, 'pais' => $pais,
+            'nombre' => self::mayusculas($nombre), 'pais' => $pais,
             'puesto' => $puesto, 'puesto_texto' => $puesto !== null ? (string)$puesto . (str_contains($fp, 'DH') ? ' DH' : '') : ($fp !== '' ? $fp : null),
             'cuadro' => ctype_digit(self::texto($tds[1])) ? (int)self::texto($tds[1]) : null,
             'numero' => ctype_digit(self::texto($tds[2])) ? (int)self::texto($tds[2]) : null,
@@ -226,10 +226,17 @@ final class ParserResultados
             [$abuelo, $abuela] = self::dos($tds[3]);
             [$jockey, $cuidador] = self::dos($tds[4]);
             [$prop, $criador] = self::dos($tds[5]);
-            $res[trim($a->getAttribute('horseno'))] = ['padre' => $padre, 'madre' => $madre, 'abuelo_materno' => $abuelo, 'abuela_materna' => $abuela,
+            $res[trim($a->getAttribute('horseno'))] = ['padre' => self::mayusculas($padre), 'madre' => self::mayusculas($madre),
+                'abuelo_materno' => self::mayusculas($abuelo), 'abuela_materna' => self::mayusculas($abuela),
                 'jockey' => $jockey, 'cuidador' => $cuidador, 'propietario' => $prop, 'criador' => $criador];
         }
         return $res;
+    }
+
+    /** Los nombres de caballos van en mayúsculas, como en los otros países (la JRA los escribe "Heart's Cry"). */
+    public static function mayusculas(?string $nombre): ?string
+    {
+        return $nombre === null || $nombre === '' ? $nombre : mb_strtoupper($nombre);
     }
 
     /** Las dos líneas de una celda ("Heart's Cry<BR>Nasuno Fiona"). */
