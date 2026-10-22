@@ -487,7 +487,7 @@ final class ProgramaNoOficial
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c + ['fecha' => $p['fecha']], $e);
         }
-        return $o . self::JS_HORAS . '</body></html>';
+        return $o . self::JS_HORAS . self::JS_ANCHO . '</body></html>';
     }
 
     /** Barra de arriba: calendario de reuniones, reuniones del día, anterior/siguiente y enlaces a cada carrera. */
@@ -662,6 +662,32 @@ final class ProgramaNoOficial
     p.className = 'gc-zona';
     p.textContent = 'Las horas están en tu zona horaria (' + Intl.DateTimeFormat().resolvedOptions().timeZone + '). Con el mouse sobre una hora se ve la del hipódromo.';
     h.before(p);
+  }
+})();</script>
+JS;
+
+    /**
+     * Las tablas de antecedentes de toda la página quedan del ancho de la más ancha: lo que le falta a cada una se
+     * reparte entre sus columnas. Va también en los programas ya publicados (Publicador::actualizarAncho), por eso
+     * lleva el id: si cambia, se reemplaza.
+     */
+    public const JS_ANCHO = <<<'JS'
+<script id="gc-ancho">(() => {
+  const tablas = [...document.querySelectorAll('table.ant')];
+  const ancho = Math.max(0, ...tablas.map(t => t.scrollWidth));
+  // Primero se mide todo y después se cambia, así el navegador no recalcula la página con cada tabla.
+  const cambios = tablas.map(t => {
+    const celdas = t.tHead ? [...t.tHead.rows[0].cells] : [];
+    const extra = celdas.length ? (ancho - t.scrollWidth) / celdas.length : 0;
+    return [celdas, celdas.map(c => c.getBoundingClientRect().width + extra), extra];
+  });
+  for (const [celdas, anchos, extra] of cambios) {
+    if (extra >= 0.5) celdas.forEach((c, i) => { c.style.width = c.style.minWidth = anchos[i] + 'px'; });
+  }
+  // Lo que quede por redondeo va a la última columna.
+  for (const [celdas, anchos] of cambios) {
+    const resto = ancho - (celdas[0] ? celdas[0].closest('table').scrollWidth : ancho);
+    if (resto > 0) { const c = celdas[celdas.length - 1]; c.style.width = c.style.minWidth = anchos[anchos.length - 1] + resto + 'px'; }
   }
 })();</script>
 JS;
