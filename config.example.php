@@ -58,4 +58,15 @@ return [
         // Pestañas que son otra reunión de un hipódromo de la lista.
         'alias' => ['Gávea Int' => 'Gávea', 'Gávea Extra' => 'Gávea'],
     ],
+    // Japón (JRA, sitio en inglés jra.jp/JRAEN: los 10 hipódromos centrales): base aparte con sql/schema_jp.sql.
+    // Ver bin/jp_historico.php.
+    'jp' => [
+        'db' => [
+            'dsn'      => 'mysql:host=localhost;dbname=granchance_jp;charset=utf8mb4',
+            'usuario'  => 'granchance',
+            'clave'    => '',
+        ],
+        'pausa_segundos' => 0.5,
+        'carpeta_crudos' => __DIR__ . '/raw/jp',
+    ],
 ];

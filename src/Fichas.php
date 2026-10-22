@@ -8,7 +8,7 @@ use PDO;
 /**
  * Fichas de la web (public/ficha.php): una página por caballo, jockey y cuidador con todas sus carreras (las corridas y
  * las inscripciones de los programas publicados), los premios cobrados, una tabla de puestos por año y otra por distancia.
- * También el buscador. Se arman al pedirlas, leyendo la base. Con $pais ('hk', 'br', 'ar') leen la base de ese país
+ * También el buscador. Se arman al pedirlas, leyendo la base. Con $pais ('hk', 'br', 'ar', 'jp') leen la base de ese país
  * (/ar/caballo/123-nombre...): sin inscripciones (las próximas carreras salen solo en Uruguay), y en Hong Kong sin studs ni criadores.
  */
 final class Fichas
@@ -27,7 +27,7 @@ final class Fichas
     /** Jockeys y cuidadores: sin ?todas=1, la lista de carreras muestra el último año. */
     private const DIAS_LISTA = 365;
     /** Otros países: código => [nombre, número que se suma al id del hipódromo en la web, país de los caballos nacidos ahí]. */
-    public const PAISES = ['ar' => ['Argentina', 200, 'ARG'], 'br' => ['Brasil', 300, null], 'hk' => ['Hong Kong', 100, null]];
+    public const PAISES = ['ar' => ['Argentina', 200, 'ARG'], 'br' => ['Brasil', 300, null], 'hk' => ['Hong Kong', 100, null], 'jp' => ['Japón', 400, 'JPN']];
     /** Reparto habitual de la bolsa del HKJC del 1º al 5º. */
     private const REPARTO_HK = [1 => .57, .22, .115, .06, .035];
 
@@ -97,6 +97,8 @@ final class Fichas
             'ar' => ($p = self::premioAr($a['bolsa'], $a['bolsa_dolares'], $a['bolsa_detalle'], $a['puesto'])) ? ['$', $p[0]] : null,
             'br' => null,
             'hk' => $a['puesto'] && $a['puesto'] <= 5 && (float)$a['bolsa'] > 0 ? ['HK$', (int)round((float)$a['bolsa'] * self::REPARTO_HK[$a['puesto']])] : null,
+            // La JRA publica lo que paga a cada uno de los 5 primeros (bolsa_detalle, yenes separados por espacio).
+            'jp' => $a['puesto'] && $a['puesto'] <= 5 && ($y = (int)(explode(' ', (string)$a['bolsa_detalle'])[$a['puesto'] - 1] ?? 0)) > 0 ? ['¥', $y] : null,
             default => self::premio($a['bolsa'], $a['bolsa_detalle'], $a['puesto']),
         };
     }
@@ -201,7 +203,8 @@ final class Fichas
         $etiqueta = $linea ? self::LINEAS[$tipo][0] : self::TIPOS[$tipo];
         $o = '<h1>' . $e($titulo) . ' <small>' . $etiqueta . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : '') . '</small></h1>';
         if ($tipo === 'caballo') {
-            $sexo = ['h' => 'hembra', 'm' => 'macho', 'c' => 'castrado'][strtolower((string)$ficha['sexo'])] ?? mb_strtolower((string)$ficha['sexo']);
+            $sexo = $this->pais === 'jp' ? JP\Traduccion::sexo($ficha['sexo'])
+                : ['h' => 'hembra', 'm' => 'macho', 'c' => 'castrado'][strtolower((string)$ficha['sexo'])] ?? mb_strtolower((string)$ficha['sexo']);
             $o .= '<p>' . $e(trim(($this->pais === 'br' ? BR\Traduccion::pelaje($ficha['pelaje']) : self::pelaje($ficha['pelaje'])) . ' ' . $sexo)) . ($ficha['anio_nac'] ? ', nacido en ' . (int)$ficha['anio_nac'] : '')
                 . ($ficha['fecha_nac'] ?? null ? ' (' . date('d/m/Y', strtotime($ficha['fecha_nac'])) . ')' : '')
                 . ($ficha['padre'] ? ' · Por ' . self::enlazarLinea('padrillo', $ficha['padre'], $this->pais) : '') . ($ficha['madre'] ? ' y ' . self::enlazarLinea('madre', $ficha['madre'], $this->pais) : '')
@@ -260,6 +263,7 @@ final class Fichas
                     'ar' => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), en pesos, según el Stud Book. ',
                     'br' => 'El JCB no publica los premios. ',
                     'hk' => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), en dólares de Hong Kong, estimado con el reparto habitual del HKJC. ',
+                    'jp' => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), en yenes, según la JRA. ',
                     default => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), según la condición; si la condición no trae el detalle, '
                         . 'se estima con el reparto habitual de la bolsa. ',
                 } . ($this->pais !== 'br' && in_array($tipo, ['jockey', 'cuidador'], true) ? 'Son los premios de los caballos, no la parte del ' . $tipo . '.' : '')
@@ -390,7 +394,7 @@ final class Fichas
         $o .= '<div class="ancha" id="' . strtolower($quienes) . '"><table class="hijos"><thead><tr><th>Caballo</th><th>Sexo</th><th>Nac.</th>'
             . ($tipo !== 'padrillo' ? '<th>Padre</th>' : '') . ($tipo !== 'madre' ? '<th>Madre</th>' : '') . $cabeza . '</tr></thead><tbody>';
         foreach ($hijos as $h) {
-            $sexo = $this->pais === 'hk' ? (string)$h['sexo'] : strtoupper(mb_substr((string)$h['sexo'], 0, 1));
+            $sexo = match ($this->pais) {'hk' => (string)$h['sexo'], 'jp' => JP\Traduccion::sexo($h['sexo']), default => strtoupper(mb_substr((string)$h['sexo'], 0, 1))};
             $o .= '<tr><td>' . $this->enlace('caballo', $h['id'], $h['nombre']) . ($h['pais'] && $h['pais'] !== $local && !str_ends_with($h['nombre'], ')') ? ' <small>(' . $e($h['pais']) . ')</small>' : '')
                 . '</td><td>' . $e($sexo) . '</td><td>' . ($h['anio_nac'] ? (int)$h['anio_nac'] : '') . '</td>'
                 . ($tipo !== 'padrillo' ? '<td>' . self::enlazarLinea('padrillo', $h['padre'], $this->pais) . '</td>' : '')
@@ -403,15 +407,17 @@ final class Fichas
     private function corridas(string $condicion, array $args): array
     {
         // Las columnas que cambian de un país a otro: el dividendo a ganador, los studs (no en Hong Kong) y los que no largaron
-        // (en Argentina y Brasil figuran como retirados; en Hong Kong, con puesto WV, WX...).
+        // (en Argentina y Brasil figuran como retirados; en Hong Kong, con puesto WV, WX...; en Japón, S y ER).
         $hk = $this->pais === 'hk';
-        $sport = in_array($this->pais, ['hk', 'br'], true) ? 'cuota' : 'sport';
+        $sport = in_array($this->pais, ['hk', 'br', 'jp'], true) ? 'cuota' : 'sport';
         $largo = fn (string $t) => match ($this->pais) {
             'ar', 'br' => " AND $t.retiro_motivo IS NULL",
             'hk' => " AND ($t.puesto_texto IS NULL OR $t.puesto_texto NOT LIKE 'W%')",
+            'jp' => " AND ($t.puesto_texto IS NULL OR $t.puesto_texto NOT IN ('S', 'ER'))",
             default => '',
         };
         $st = $this->db->prepare("SELECT r.fecha, r.hipodromo_id, c.id AS carrera_id, c.numero, c.premio AS nombre_carrera, c.distancia, c.superficie, c.pista,
+                " . ($this->pais === 'jp' ? 'c.clase, ' : '') . "
                 c.bolsa, c.bolsa_detalle" . ($this->pais === 'ar' ? ', c.bolsa_dolares' : '') . ", a.puesto, a.puesto_texto, a.peso_asignado, a.$sport AS sport, a.tiempo,
                 ca.id AS caballo_id, ca.nombre AS caballo, j.id AS jockey_id, j.nombre AS jockey, cu.id AS cuidador_id, cu.nombre AS cuidador,
                 " . ($hk ? 'NULL AS stud_id, NULL AS stud' : 's.id AS stud_id, s.nombre AS stud') . ", (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = c.id" . $largo('x') . ") AS corredores
@@ -425,6 +431,10 @@ final class Fichas
             if ($this->pais === 'br') {
                 // El JCB escribe en portugués: la web, en español.
                 [$a['nombre_carrera'], $a['pista'], $a['puesto_texto']] = [BR\Traduccion::premio($a['nombre_carrera']), BR\Traduccion::pista($a['pista']), BR\Traduccion::puesto($a['puesto_texto'])];
+            } elseif ($this->pais === 'jp') {
+                // La JRA, en inglés: la web, en español. Las carreras comunes no tienen nombre: va la clase.
+                [$a['nombre_carrera'], $a['pista'], $a['puesto_texto'], $a['superficie']] = [$a['nombre_carrera'] ?: JP\Traduccion::clase($a['clase']),
+                    JP\Traduccion::pista($a['pista']), JP\Traduccion::puesto($a['puesto_texto']), JP\Traduccion::superficie($a['superficie'])];
             }
             $a['cobrado'] = $this->cobrado($a);
         }
@@ -651,7 +661,7 @@ final class Fichas
         $premios = $this->pais !== 'br';
         $o = '<div class="ancha"><table class="corridas"><thead><tr><th>Fecha</th><th>Hip.</th><th>Carrera</th><th>Dist.</th><th>Pista</th><th>Puesto</th>'
             . implode('', array_map(fn ($c) => '<th>' . self::TIPOS[$c] . '</th>', $this->columnas($tipo)))
-            . '<th>Kg</th><th>' . (['hk' => 'Cuota', 'br' => 'Cuota'][$this->pais ?? ''] ?? 'Sport') . '</th>' . ($premios ? '<th>Premio cobrado</th>' : '') . '</tr></thead><tbody>';
+            . '<th>Kg</th><th>' . (['hk' => 'Cuota', 'br' => 'Cuota', 'jp' => 'Cuota'][$this->pais ?? ''] ?? 'Sport') . '</th>' . ($premios ? '<th>Premio cobrado</th>' : '') . '</tr></thead><tbody>';
         foreach ($lista as $a) {
             $clave = $a['fecha'] . '_' . $this->web((int)$a['hipodromo_id']);
             $carrera = $a['numero'] . 'ª ' . $e($a['nombre_carrera']);

@@ -9,12 +9,12 @@ AddType "text/calendar; charset=utf-8" .ics
   RewriteRule ^hipodromo-([a-z0-9-]+)$ index.php?h=$1 [L,QSA]
   RewriteRule ^pais-([a-z0-9-]+)/$ /pais-$1 [R=301,L]
   RewriteRule ^pais-([a-z0-9-]+)$ index.php?p=$1 [L,QSA]
-  # Fichas: /caballo/123-nombre, /jockey/…, /cuidador/…, /stud/…, /criador/… (y las de otros países: /ar/caballo/…, /br/…, /hk/…); y el buscador
+  # Fichas: /caballo/123-nombre, /jockey/…, /cuidador/…, /stud/…, /criador/… (y las de otros países: /ar/caballo/…, /br/…, /hk/…, /jp/…); y el buscador
   RewriteRule ^(caballo|jockey|cuidador|stud|criador)/(\d+)(-[a-z0-9-]*)?/?$ ficha.php?tipo=$1&id=$2 [L,QSA]
-  RewriteRule ^(ar|br|hk)/(caballo|jockey|cuidador|stud|criador)/(\d+)(-[a-z0-9-]*)?/?$ ficha.php?pais=$1&tipo=$2&id=$3 [L,QSA]
+  RewriteRule ^(ar|br|hk|jp)/(caballo|jockey|cuidador|stud|criador)/(\d+)(-[a-z0-9-]*)?/?$ ficha.php?pais=$1&tipo=$2&id=$3 [L,QSA]
   # Padrillos, madres y abuelos maternos, por el nombre: /padrillo/village-king, /ar/madre/…
   RewriteRule ^(padrillo|madre|abuelo)/([a-z0-9-]+)/?$ ficha.php?tipo=$1&nombre=$2 [L,QSA]
-  RewriteRule ^(ar|br|hk)/(padrillo|madre|abuelo)/([a-z0-9-]+)/?$ ficha.php?pais=$1&tipo=$2&nombre=$3 [L,QSA]
+  RewriteRule ^(ar|br|hk|jp)/(padrillo|madre|abuelo)/([a-z0-9-]+)/?$ ficha.php?pais=$1&tipo=$2&nombre=$3 [L,QSA]
   RewriteRule ^buscar/?$ ficha.php?tipo=buscar [L,QSA]
   RewriteRule ^ranking/?$ ficha.php?tipo=ranking [L,QSA]
   RewriteRule ^ranking/([a-z]+)/?$ ficha.php?tipo=ranking&de=$1 [L,QSA]

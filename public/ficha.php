@@ -11,11 +11,11 @@ require $proyecto . '/vendor/autoload.php';
 $config = require $proyecto . '/config.php';
 
 $tipo = (string)($_GET['tipo'] ?? '');
-// Fichas de otro país: /ar/caballo/123-nombre, /br/jockey/..., /hk/cuidador/... (ver .htaccess).
+// Fichas de otro país: /ar/caballo/123-nombre, /br/jockey/..., /hk/cuidador/..., /jp/stud/... (ver .htaccess).
 $pais = isset(GranChance\Fichas::PAISES[$_GET['pais'] ?? '']) ? (string)$_GET['pais'] : null;
 try {
     $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
-    // Los otros países leen su propia base (config 'hk', 'br', 'ar'): los rankings (?pais=argentina...), el buscador y sus
+    // Los otros países leen su propia base (config 'hk', 'br', 'ar', 'jp'): los rankings (?pais=argentina...), el buscador y sus
     // fichas. Si no está configurada o no responde, ese país no aparece.
     $otra = function (string $p) use ($config, $tipo, $pais): ?PDO {
         if ((!in_array($tipo, ['ranking', 'buscar'], true) && $p !== $pais) || empty($config[$p]['db']['dsn'])) {
@@ -29,7 +29,7 @@ try {
             return null;
         }
     };
-    $bases = array_filter(['ar' => $otra('ar'), 'br' => $otra('br'), 'hk' => $otra('hk')]);
+    $bases = array_filter(['ar' => $otra('ar'), 'br' => $otra('br'), 'hk' => $otra('hk'), 'jp' => $otra('jp')]);
     $fichas = new GranChance\Fichas($db, __DIR__);
     $otrasFichas = function (array $bases): array {
         $f = [];
@@ -42,8 +42,8 @@ try {
     $id = isset(GranChance\Fichas::LINEAS[$tipo]) ? (string)($_GET['nombre'] ?? '') : (int)($_GET['id'] ?? 0);
     $html = match (true) {
         $tipo === 'buscar' => $fichas->buscar((string)($_GET['q'] ?? ''), $otrasFichas($bases)),
-        $tipo === 'ranking' && empty($_GET['de']) => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null))->indice(),
-        $tipo === 'ranking' => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null))->pagina((string)$_GET['de'], $_GET),
+        $tipo === 'ranking' && empty($_GET['de']) => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null, $bases['jp'] ?? null))->indice(),
+        $tipo === 'ranking' => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null, $bases['jp'] ?? null))->pagina((string)$_GET['de'], $_GET),
         $pais !== null => isset($bases[$pais]) ? (new GranChance\Fichas($bases[$pais], __DIR__, $pais))->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null) : null,
         default => $fichas->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null),
     };
