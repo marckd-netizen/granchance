@@ -667,27 +667,24 @@ final class ProgramaNoOficial
 JS;
 
     /**
-     * Las tablas de antecedentes de toda la página quedan del ancho de la más ancha: lo que le falta a cada una se
-     * reparte entre sus columnas. Va también en los programas ya publicados (Publicador::actualizarAncho), por eso
-     * lleva el id: si cambia, se reemplaza.
+     * Las tablas de antecedentes de toda la página quedan con las columnas alineadas, y así todas del mismo ancho.
+     * Va también en los programas ya publicados (Publicador::actualizarAncho), por eso lleva el id: si cambia, se
+     * reemplaza.
      */
     public const JS_ANCHO = <<<'JS'
 <script id="gc-ancho">(() => {
-  const tablas = [...document.querySelectorAll('table.ant')];
-  const ancho = Math.max(0, ...tablas.map(t => t.scrollWidth));
-  // Primero se mide todo y después se cambia, así el navegador no recalcula la página con cada tabla.
-  const cambios = tablas.map(t => {
+  // Columnas alineadas: cada columna toma el ancho de la más ancha de esa columna en todas las tablas con los mismos
+  // encabezados. Primero se mide todo y después se cambia, así el navegador no recalcula la página con cada tabla.
+  const grupos = {};
+  for (const t of document.querySelectorAll('table.ant')) {
     const celdas = t.tHead ? [...t.tHead.rows[0].cells] : [];
-    const extra = celdas.length ? (ancho - t.scrollWidth) / celdas.length : 0;
-    return [celdas, celdas.map(c => c.getBoundingClientRect().width + extra), extra];
-  });
-  for (const [celdas, anchos, extra] of cambios) {
-    if (extra >= 0.5) celdas.forEach((c, i) => { c.style.width = c.style.minWidth = anchos[i] + 'px'; });
+    const clave = celdas.map(c => c.textContent).join('|');
+    const g = grupos[clave] || (grupos[clave] = {tablas: [], anchos: celdas.map(() => 0)});
+    g.tablas.push(celdas);
+    celdas.forEach((c, i) => { g.anchos[i] = Math.max(g.anchos[i], c.getBoundingClientRect().width); });
   }
-  // Lo que quede por redondeo va a la última columna.
-  for (const [celdas, anchos] of cambios) {
-    const resto = ancho - (celdas[0] ? celdas[0].closest('table').scrollWidth : ancho);
-    if (resto > 0) { const c = celdas[celdas.length - 1]; c.style.width = c.style.minWidth = anchos[anchos.length - 1] + resto + 'px'; }
+  for (const g of Object.values(grupos)) {
+    for (const celdas of g.tablas) celdas.forEach((c, i) => { c.style.width = c.style.minWidth = Math.ceil(g.anchos[i]) + 'px'; });
   }
 })();</script>
 JS;
