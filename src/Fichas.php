@@ -14,9 +14,14 @@ use PDO;
 final class Fichas
 {
     public const TIPOS = ['caballo' => 'Caballo', 'jockey' => 'Jockey', 'cuidador' => 'Cuidador', 'stud' => 'Stud', 'criador' => 'Criador'];
+    /** Padrillos, madres y abuelos maternos: tipo => [título, columna de caballo]. Están en la base solo como texto, así que van por el nombre. */
+    public const LINEAS = ['padrillo' => ['Padrillo', 'padre'], 'madre' => ['Madre', 'madre'], 'abuelo' => ['Abuelo materno', 'abuelo_materno']];
+    /** Hijos o nietos que se listan sin ?todas=1. */
+    private const CANTIDAD_HIJOS = 100;
     /** Columnas de la lista de carreras según de quién es la ficha. */
     private const COLUMNAS = ['caballo' => ['jockey', 'cuidador', 'stud'], 'jockey' => ['caballo', 'cuidador'], 'cuidador' => ['caballo', 'jockey'],
-        'stud' => ['caballo', 'jockey', 'cuidador'], 'criador' => ['caballo', 'stud', 'cuidador']];
+        'stud' => ['caballo', 'jockey', 'cuidador'], 'criador' => ['caballo', 'stud', 'cuidador'],
+        'padrillo' => ['caballo', 'jockey', 'cuidador'], 'madre' => ['caballo', 'jockey', 'cuidador'], 'abuelo' => ['caballo', 'jockey', 'cuidador']];
     /** Reparto habitual de la bolsa entre los 5 primeros, para las carreras que no traen el detalle. */
     private const REPARTO = [1 => 0.548, 2 => 0.202, 3 => 0.135, 4 => 0.077, 5 => 0.038];
     /** Jockeys y cuidadores: sin ?todas=1, la lista de carreras muestra el último año. */
@@ -52,6 +57,24 @@ final class Fichas
     public static function url(string $tipo, int $id, string $nombre, ?string $pais = null): string
     {
         return ($pais ? "/$pais" : '') . "/$tipo/$id-" . self::slug($nombre);
+    }
+
+    /** El nombre de un padrillo, madre o abuelo en la dirección, con el país si lo trae ("Roy (USA)" → roy-usa). */
+    public static function slugLinea(string $nombre): string
+    {
+        return self::slug(strtr($nombre, '()', '  '));
+    }
+
+    public static function urlLinea(string $tipo, string $nombre, ?string $pais = null): string
+    {
+        return ($pais ? "/$pais" : '') . "/$tipo/" . self::slugLinea($nombre);
+    }
+
+    /** El nombre del padrillo, la madre o el abuelo materno con el enlace a su ficha. */
+    public static function enlazarLinea(string $tipo, ?string $nombre, ?string $pais = null): string
+    {
+        $n = htmlspecialchars((string)$nombre, ENT_QUOTES);
+        return self::slugLinea((string)$nombre) !== '' ? '<a href="' . htmlspecialchars(self::urlLinea($tipo, (string)$nombre, $pais), ENT_QUOTES) . '">' . $n . '</a>' : $n;
     }
 
     /**
@@ -122,49 +145,44 @@ final class Fichas
 
     // ---------------------------------------------------------------- páginas
 
-    /** HTML de la ficha, o null si no existe. */
-    public function pagina(string $tipo, int $id, bool $todas = false, ?string $hipodromo = null): ?string
+    /**
+     * HTML de la ficha, o null si no existe. Los padrillos, las madres y los abuelos maternos (LINEAS) no tienen id: $id es
+     * su nombre como va en la dirección (/padrillo/village-king), y la ficha suma las carreras de sus hijos (o nietos).
+     */
+    public function pagina(string $tipo, int|string $id, bool $todas = false, ?string $hipodromo = null): ?string
     {
-        if ($tipo === 'caballo') {
-            $st = $this->db->prepare('SELECT * FROM caballo WHERE id = ?');
-            $st->execute([$id]);
-            $ficha = $st->fetch(PDO::FETCH_ASSOC);
-            $todas = true;
-        } elseif (isset($this->tipos()[$tipo])) {
-            $st = $this->db->prepare('SELECT * FROM persona WHERE id = ? AND tipo = ?');
-            $st->execute([$id, $tipo]);
-            $ficha = $st->fetch(PDO::FETCH_ASSOC);
+        $linea = isset(self::LINEAS[$tipo]);
+        if ($linea) {
+            $nombres = $this->nombres($tipo, (string)$id);
+            if (!$nombres) {
+                return null;
+            }
+            $ficha = ['nombre' => $nombres[0]];
+            $en = 'ca.' . self::LINEAS[$tipo][1] . ' IN (' . implode(',', array_fill(0, count($nombres), '?')) . ')';
+            $corridas = $this->corridas($en, $nombres);
+            $proximas = $this->pais ? [] : $this->proximas($en, $nombres);
         } else {
-            return null;
+            $id = (int)$id;
+            if ($tipo === 'caballo') {
+                $st = $this->db->prepare('SELECT * FROM caballo WHERE id = ?');
+                $st->execute([$id]);
+                $ficha = $st->fetch(PDO::FETCH_ASSOC);
+                $todas = true;
+            } elseif (isset($this->tipos()[$tipo])) {
+                $st = $this->db->prepare('SELECT * FROM persona WHERE id = ? AND tipo = ?');
+                $st->execute([$id, $tipo]);
+                $ficha = $st->fetch(PDO::FETCH_ASSOC);
+            } else {
+                return null;
+            }
+            if (!$ficha) {
+                return null;
+            }
+            $col = ['caballo' => 'a.caballo_id', 'jockey' => 'a.jockey_id', 'cuidador' => 'a.cuidador_id', 'stud' => 'a.stud_id', 'criador' => 'ca.criador_id'][$tipo];
+            $corridas = $this->corridas("$col = ?", [$id]);
+            $proximas = $this->pais ? [] : $this->proximas(str_replace('a.', 'i.', $col) . ' = ?', [$id]);
         }
-        if (!$ficha) {
-            return null;
-        }
-        $col = ['caballo' => 'a.caballo_id', 'jockey' => 'a.jockey_id', 'cuidador' => 'a.cuidador_id', 'stud' => 'a.stud_id', 'criador' => 'ca.criador_id'][$tipo];
-        // Las columnas que cambian de un país a otro: el dividendo a ganador, los studs (no en Hong Kong) y los que no largaron
-        // (en Argentina y Brasil figuran como retirados; en Hong Kong, con puesto WV, WX...).
         $hk = $this->pais === 'hk';
-        $sport = in_array($this->pais, ['hk', 'br'], true) ? 'cuota' : 'sport';
-        $largo = fn (string $t) => match ($this->pais) {
-            'ar', 'br' => " AND $t.retiro_motivo IS NULL",
-            'hk' => " AND ($t.puesto_texto IS NULL OR $t.puesto_texto NOT LIKE 'W%')",
-            default => '',
-        };
-        $st = $this->db->prepare("SELECT r.fecha, r.hipodromo_id, c.id AS carrera_id, c.numero, c.premio AS nombre_carrera, c.distancia, c.superficie, c.pista,
-                c.bolsa, c.bolsa_detalle" . ($this->pais === 'ar' ? ', c.bolsa_dolares' : '') . ", a.puesto, a.puesto_texto, a.peso_asignado, a.$sport AS sport, a.tiempo,
-                ca.id AS caballo_id, ca.nombre AS caballo, j.id AS jockey_id, j.nombre AS jockey, cu.id AS cuidador_id, cu.nombre AS cuidador,
-                " . ($hk ? 'NULL AS stud_id, NULL AS stud' : 's.id AS stud_id, s.nombre AS stud') . ", (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = c.id" . $largo('x') . ") AS corredores
-            FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id JOIN caballo ca ON ca.id = a.caballo_id
-            LEFT JOIN persona j ON j.id = a.jockey_id LEFT JOIN persona cu ON cu.id = a.cuidador_id " . ($hk ? '' : 'LEFT JOIN persona s ON s.id = a.stud_id') . "
-            WHERE $col = ?" . $largo('a') . " ORDER BY r.fecha DESC, c.numero DESC");
-        $st->execute([$id]);
-        $corridas = $st->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($corridas as &$a) {
-            $a['puesto'] = $a['puesto'] !== null ? (int)$a['puesto'] : null;
-            $a['cobrado'] = $this->cobrado($a);
-        }
-        unset($a);
-        $proximas = $this->pais ? [] : $this->proximas($tipo, $id);
         // Filtro por hipódromo (?h=maronas), como en la portada.
         $hips = [];
         foreach (array_merge(array_column($corridas, 'hipodromo_id'), array_column($proximas, 'hipodromo_id')) as $h) {
@@ -180,13 +198,14 @@ final class Fichas
         $titulo = $tipo === 'caballo' && $ficha['pais'] && $ficha['pais'] !== $local && !str_ends_with($ficha['nombre'], ')') ? "{$ficha['nombre']} ({$ficha['pais']})" : $ficha['nombre'];
 
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
-        $o = '<h1>' . $e($titulo) . ' <small>' . self::TIPOS[$tipo] . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : '') . '</small></h1>';
+        $etiqueta = $linea ? self::LINEAS[$tipo][0] : self::TIPOS[$tipo];
+        $o = '<h1>' . $e($titulo) . ' <small>' . $etiqueta . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : '') . '</small></h1>';
         if ($tipo === 'caballo') {
             $sexo = ['h' => 'hembra', 'm' => 'macho', 'c' => 'castrado'][strtolower((string)$ficha['sexo'])] ?? mb_strtolower((string)$ficha['sexo']);
             $o .= '<p>' . $e(trim(self::pelaje($ficha['pelaje']) . ' ' . $sexo)) . ($ficha['anio_nac'] ? ', nacido en ' . (int)$ficha['anio_nac'] : '')
                 . ($ficha['fecha_nac'] ?? null ? ' (' . date('d/m/Y', strtotime($ficha['fecha_nac'])) . ')' : '')
-                . ($ficha['padre'] ? ' · Por ' . $e($ficha['padre']) : '') . ($ficha['madre'] ? ' y ' . $e($ficha['madre']) : '')
-                . ($ficha['abuelo_materno'] ? ' (' . $e($ficha['abuelo_materno']) . ')' : '');
+                . ($ficha['padre'] ? ' · Por ' . self::enlazarLinea('padrillo', $ficha['padre'], $this->pais) : '') . ($ficha['madre'] ? ' y ' . self::enlazarLinea('madre', $ficha['madre'], $this->pais) : '')
+                . ($ficha['abuelo_materno'] ? ' (' . self::enlazarLinea('abuelo', $ficha['abuelo_materno'], $this->pais) . ')' : '');
             if ($corridas) {
                 $u = $corridas[0];
                 $o .= ' · Último jockey: ' . $this->enlace('jockey', $u['jockey_id'], $u['jockey']) . ' · Cuidador: ' . $this->enlace('cuidador', $u['cuidador_id'], $u['cuidador'])
@@ -198,6 +217,8 @@ final class Fichas
                 $o .= ' · Criador: ' . $this->enlace('criador', $ficha['criador_id'], (string)$st->fetchColumn());
             }
             $o .= '</p>';
+        } elseif ($linea) {
+            $o .= $this->parientes($tipo, $nombres);
         } elseif ($tipo === 'stud' && ($ch = $this->chaquetilla($ficha['nombre'], 60))) {
             $o .= '<p>' . $ch . ' <small>' . htmlspecialchars((string)$this->colores($ficha['nombre'])) . '</small></p>';
         }
@@ -212,7 +233,11 @@ final class Fichas
         $o .= self::resumen($corridas, $premios);
         if (!$this->pais) {
             $o .= '<h2>Próximas carreras</h2>' . ($proximas ? $this->tablaProximas($proximas, $tipo)
-                : '<p class="nota">No figura en los programas publicados (salen hasta 15 días antes de cada reunión).</p>');
+                : '<p class="nota">' . ($linea ? 'Sus ' . ($tipo === 'abuelo' ? 'nietos' : 'hijos') . ' no figuran' : 'No figura')
+                    . ' en los programas publicados (salen hasta 15 días antes de cada reunión).</p>');
+        }
+        if ($linea) {
+            $o .= $this->descendencia($tipo, $en, $nombres, $corridas, $filtro !== false, $todas, $premios);
         }
         if ($corridas) {
             // Lado a lado solo en la ficha del caballo: las de jockeys y cuidadores tienen muchas filas y montos grandes.
@@ -238,11 +263,169 @@ final class Fichas
                     default => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), según la condición; si la condición no trae el detalle, '
                         . 'se estima con el reparto habitual de la bolsa. ',
                 } . ($this->pais !== 'br' && in_array($tipo, ['jockey', 'cuidador'], true) ? 'Son los premios de los caballos, no la parte del ' . $tipo . '.' : '')
-                . ($tipo === 'criador' ? 'Son las carreras y los premios de los caballos que crió.' : '') . '</p>';
+                . ($tipo === 'criador' ? 'Son las carreras y los premios de los caballos que crió.' : '')
+                . ($linea ? 'Son las carreras y los premios de sus ' . ($tipo === 'abuelo' ? 'nietos por línea materna' : 'hijos')
+                    . '. Van por el nombre, como figura en la base: si dos ' . ($tipo === 'madre' ? 'yeguas' : 'padrillos') . ' se llaman igual, sus hijos salen juntos.' : '') . '</p>';
         } else {
             $o .= '<p>No tiene carreras corridas registradas.</p>';
         }
-        return $this->documento($titulo . ' · ' . self::TIPOS[$tipo] . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : ''), $o);
+        return $this->documento($titulo . ' · ' . $etiqueta . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : ''), $o);
+    }
+
+    /**
+     * Cómo figura en la base el padrillo, la madre o el abuelo materno de la dirección ($slug), el más usado primero
+     * (mayúsculas y tildes aparte, que la base no distingue). Vacío si no tiene hijos, o nietos, en la base.
+     */
+    public function nombres(string $tipo, string $slug): array
+    {
+        $col = self::LINEAS[$tipo][1];
+        if (!preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/', $slug)) {
+            return [];
+        }
+        // El LIKE (que no distingue mayúsculas ni tildes) trae los candidatos: las letras en orden, con cualquier cosa entre
+        // ellas ("Harlan's Holiday" → harlans-holiday). El nombre se compara después, como en la dirección.
+        $st = $this->db->prepare("SELECT $col FROM caballo WHERE $col LIKE ? GROUP BY $col ORDER BY COUNT(*) DESC");
+        $st->execute(['%' . implode('%', str_split(str_replace('-', '', $slug))) . '%']);
+        return array_values(array_filter($st->fetchAll(PDO::FETCH_COLUMN), fn ($n) => self::slugLinea((string)$n) === $slug));
+    }
+
+    /**
+     * Debajo del nombre del padrillo, la madre o el abuelo: su ficha de caballo si corrió y está en la base, de quién es
+     * hija la madre (el abuelo materno de sus hijos) y, si el padrillo también es abuelo materno (o al revés), la otra ficha.
+     */
+    private function parientes(string $tipo, array $nombres): string
+    {
+        $partes = [];
+        // Corrió: un solo caballo con ese nombre (sin el país, que en Argentina va en el nombre del padrillo) y nacido antes que sus hijos.
+        $sin = array_values(array_unique(array_map(fn ($n) => trim(preg_replace('/\s*\([^)]*\)\s*$/u', '', $n)), $nombres)));
+        $col = self::LINEAS[$tipo][1];
+        $en = fn (string $c, array $v) => "$c IN (" . implode(',', array_fill(0, count($v), '?')) . ')';
+        $st = $this->db->prepare('SELECT id, nombre FROM caballo WHERE ' . $en('nombre', $sin) . ' AND (anio_nac IS NULL OR anio_nac <
+            (SELECT COALESCE(MIN(anio_nac), 9999) FROM caballo WHERE ' . $en($col, $nombres) . '))');
+        $st->execute([...$sin, ...$nombres]);
+        $propia = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (count($propia) === 1) {
+            $partes[] = 'Su campaña: ' . $this->enlace('caballo', $propia[0]['id'], $propia[0]['nombre']);
+        }
+        if ($tipo === 'madre') {
+            // Su padre es el abuelo materno de sus hijos.
+            $st = $this->db->prepare('SELECT abuelo_materno FROM caballo WHERE ' . $en('madre', $nombres) . " AND abuelo_materno <> '' GROUP BY abuelo_materno ORDER BY COUNT(*) DESC LIMIT 1");
+            $st->execute($nombres);
+            if ($padre = $st->fetchColumn()) {
+                $partes[] = 'Hija de ' . self::enlazarLinea($this->nombres('padrillo', self::slugLinea($padre)) ? 'padrillo' : 'abuelo', $padre, $this->pais);
+            }
+        } else {
+            $otro = $tipo === 'padrillo' ? 'abuelo' : 'padrillo';
+            $st = $this->db->prepare('SELECT COUNT(*) FROM caballo WHERE ' . $en(self::LINEAS[$otro][1], $nombres));
+            $st->execute($nombres);
+            if ($n = (int)$st->fetchColumn()) {
+                $partes[] = '<a href="' . htmlspecialchars(self::urlLinea($otro, $nombres[0], $this->pais), ENT_QUOTES) . '">'
+                    . ($otro === 'abuelo' ? "Abuelo materno de $n caballos" : "Padrillo de $n caballos") . '</a>';
+            }
+        }
+        return $partes ? '<p>' . implode(' · ', $partes) . '</p>' : '';
+    }
+
+    /**
+     * Los hijos del padrillo o de la madre, o los nietos del abuelo materno (con sus hijas antes), con lo que corrió cada uno.
+     * @param bool $filtrado si hay filtro por hipódromo: solo los que corrieron ahí
+     */
+    private function descendencia(string $tipo, string $en, array $nombres, array $corridas, bool $filtrado, bool $todas, bool $premios): string
+    {
+        $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
+        $st = $this->db->prepare("SELECT ca.id, ca.nombre, ca.pais, ca.sexo, ca.anio_nac, ca.padre, ca.madre FROM caballo ca WHERE $en");
+        $st->execute($nombres);
+        $hijos = $st->fetchAll(PDO::FETCH_ASSOC);
+        $por = [];
+        foreach ($corridas as $a) {
+            $por[(int)$a['caballo_id']][] = $a;
+        }
+        $local = $this->pais ? self::PAISES[$this->pais][2] : 'URU';
+        $fila = function (array $as): array {
+            return ['corridas' => count($as), 'ganadas' => count(array_filter($as, fn ($a) => $a['puesto'] === 1)),
+                'top3' => count(array_filter($as, fn ($a) => $a['puesto'] !== null && $a['puesto'] <= 3)), 'ultima' => $as ? max(array_column($as, 'fecha')) : null,
+                'premios' => self::sumarPremios($as)];
+        };
+        foreach ($hijos as &$h) {
+            $h += $fila($por[(int)$h['id']] ?? []);
+        }
+        unset($h);
+        if ($filtrado) {
+            $hijos = array_values(array_filter($hijos, fn ($h) => $h['corridas'] > 0));
+        }
+        $orden = fn ($a, $b) => [$b['ganadas'], $b['top3'], $b['corridas'], $a['nombre']] <=> [$a['ganadas'], $a['top3'], $a['corridas'], $b['nombre']];
+        usort($hijos, $orden);
+        $numeros = fn (array $r) => '<td class="n">' . $r['corridas'] . '</td><td class="n">' . $r['ganadas'] . '</td><td class="n">' . self::pct($r['ganadas'], $r['corridas'])
+            . '</td><td class="n">' . $r['top3'] . '</td><td class="n">' . self::pct($r['top3'], $r['corridas']) . '</td>'
+            . ($premios ? '<td class="n">' . ($r['premios'] ? self::plata($r['premios'], '<br>') : '') . '</td>' : '')
+            . '<td>' . ($r['ultima'] ? date('d/m/y', strtotime($r['ultima'])) : '') . '</td>';
+        $cabeza = '<th class="n">Carreras</th><th class="n">1º</th><th class="n">% gan.</th><th class="n">1º a 3º</th><th class="n">% 1º a 3º</th>'
+            . ($premios ? '<th class="n">Premios</th>' : '') . '<th>Última</th>';
+        $o = '';
+        if ($tipo === 'abuelo') {
+            // Sus hijas: las madres de sus nietos, con lo que corrieron los hijos de cada una.
+            $hijas = [];
+            foreach ($hijos as $h) {
+                $k = self::slugLinea((string)$h['madre']);
+                $hijas[$k]['nombre'] ??= (string)$h['madre'];
+                $hijas[$k]['hijos'][] = $h;
+            }
+            foreach ($hijas as &$m) {
+                $m += $fila(array_merge(...array_map(fn ($h) => $por[(int)$h['id']] ?? [], $m['hijos'])));
+            }
+            unset($m);
+            uasort($hijas, $orden);
+            $o .= '<h2>Sus hijas madres (' . count($hijas) . ')</h2><div class="ancha"><table class="hijos"><thead><tr><th>Madre</th><th class="n">Hijos</th>' . $cabeza . '</tr></thead><tbody>';
+            foreach ($hijas as $m) {
+                $o .= '<tr><td>' . self::enlazarLinea('madre', $m['nombre'], $this->pais) . '</td><td class="n">' . count($m['hijos']) . '</td>' . $numeros($m) . '</tr>';
+            }
+            $o .= '</tbody></table></div>';
+        }
+        $quienes = $tipo === 'abuelo' ? 'Nietos' : 'Hijos';
+        $o .= '<h2>' . $quienes . ' (' . count($hijos) . ')</h2>';
+        if (!$todas && count($hijos) > self::CANTIDAD_HIJOS) {
+            $o .= '<p class="nota">Los ' . self::CANTIDAD_HIJOS . ' con más carreras ganadas. <a href="?todas=1#' . strtolower($quienes) . '">Ver todos</a></p>';
+            $hijos = array_slice($hijos, 0, self::CANTIDAD_HIJOS);
+        }
+        $o .= '<div class="ancha" id="' . strtolower($quienes) . '"><table class="hijos"><thead><tr><th>Caballo</th><th>Sexo</th><th>Nac.</th>'
+            . ($tipo !== 'padrillo' ? '<th>Padre</th>' : '') . ($tipo !== 'madre' ? '<th>Madre</th>' : '') . $cabeza . '</tr></thead><tbody>';
+        foreach ($hijos as $h) {
+            $sexo = $this->pais === 'hk' ? (string)$h['sexo'] : strtoupper(mb_substr((string)$h['sexo'], 0, 1));
+            $o .= '<tr><td>' . $this->enlace('caballo', $h['id'], $h['nombre']) . ($h['pais'] && $h['pais'] !== $local && !str_ends_with($h['nombre'], ')') ? ' <small>(' . $e($h['pais']) . ')</small>' : '')
+                . '</td><td>' . $e($sexo) . '</td><td>' . ($h['anio_nac'] ? (int)$h['anio_nac'] : '') . '</td>'
+                . ($tipo !== 'padrillo' ? '<td>' . self::enlazarLinea('padrillo', $h['padre'], $this->pais) . '</td>' : '')
+                . ($tipo !== 'madre' ? '<td>' . self::enlazarLinea('madre', $h['madre'], $this->pais) . '</td>' : '') . $numeros($h) . '</tr>';
+        }
+        return $o . '</tbody></table></div>';
+    }
+
+    /** Las carreras corridas que cumplen $condicion (sobre actuacion a, caballo ca), de la más reciente a la más vieja. */
+    private function corridas(string $condicion, array $args): array
+    {
+        // Las columnas que cambian de un país a otro: el dividendo a ganador, los studs (no en Hong Kong) y los que no largaron
+        // (en Argentina y Brasil figuran como retirados; en Hong Kong, con puesto WV, WX...).
+        $hk = $this->pais === 'hk';
+        $sport = in_array($this->pais, ['hk', 'br'], true) ? 'cuota' : 'sport';
+        $largo = fn (string $t) => match ($this->pais) {
+            'ar', 'br' => " AND $t.retiro_motivo IS NULL",
+            'hk' => " AND ($t.puesto_texto IS NULL OR $t.puesto_texto NOT LIKE 'W%')",
+            default => '',
+        };
+        $st = $this->db->prepare("SELECT r.fecha, r.hipodromo_id, c.id AS carrera_id, c.numero, c.premio AS nombre_carrera, c.distancia, c.superficie, c.pista,
+                c.bolsa, c.bolsa_detalle" . ($this->pais === 'ar' ? ', c.bolsa_dolares' : '') . ", a.puesto, a.puesto_texto, a.peso_asignado, a.$sport AS sport, a.tiempo,
+                ca.id AS caballo_id, ca.nombre AS caballo, j.id AS jockey_id, j.nombre AS jockey, cu.id AS cuidador_id, cu.nombre AS cuidador,
+                " . ($hk ? 'NULL AS stud_id, NULL AS stud' : 's.id AS stud_id, s.nombre AS stud') . ", (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = c.id" . $largo('x') . ") AS corredores
+            FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id JOIN caballo ca ON ca.id = a.caballo_id
+            LEFT JOIN persona j ON j.id = a.jockey_id LEFT JOIN persona cu ON cu.id = a.cuidador_id " . ($hk ? '' : 'LEFT JOIN persona s ON s.id = a.stud_id') . "
+            WHERE $condicion" . $largo('a') . " ORDER BY r.fecha DESC, c.numero DESC");
+        $st->execute($args);
+        $corridas = $st->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($corridas as &$a) {
+            $a['puesto'] = $a['puesto'] !== null ? (int)$a['puesto'] : null;
+            $a['cobrado'] = $this->cobrado($a);
+        }
+        unset($a);
+        return $corridas;
     }
 
     /** @param array<string, Fichas> $otras fichas de los otros países (clave de PAISES => Fichas), para buscar también ahí */
@@ -250,7 +433,7 @@ final class Fichas
     {
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
         $q = trim(mb_substr($q, 0, 60));
-        $o = '<h1>Buscar</h1><form class="buscar" action="/buscar"><input name="q" value="' . $e($q) . '" placeholder="Caballo, jockey, cuidador, stud o criador" autofocus> <button>Buscar</button></form>';
+        $o = '<h1>Buscar</h1><form class="buscar" action="/buscar"><input name="q" value="' . $e($q) . '" placeholder="Caballo, jockey, cuidador, stud, criador, padrillo o madre" autofocus> <button>Buscar</button></form>';
         if (mb_strlen($q) >= 2) {
             $todas = [];
             foreach (['Uruguay' => $this] + array_combine(array_map(fn ($p) => self::PAISES[$p][0], array_keys($otras)), $otras) as $pais => $fichas) {
@@ -287,6 +470,20 @@ final class Fichas
             $st->execute([$t, $like]);
             foreach ($st as $p) {
                 $filas[] = '<li>' . $this->enlace($t, $p['id'], $p['nombre']) . ' <small>' . self::TIPOS[$t] . ' · ' . (int)$p['n'] . ' carreras</small></li>';
+            }
+        }
+        // Padrillos, madres y abuelos maternos (estos, si no salieron ya como padrillos).
+        $padrillos = [];
+        foreach (self::LINEAS as $t => [$titulo, $col]) {
+            $st = $this->db->prepare("SELECT $col AS nombre, COUNT(*) AS n FROM caballo WHERE $col LIKE ? GROUP BY $col ORDER BY n DESC LIMIT 20");
+            $st->execute([$like]);
+            foreach ($st as $p) {
+                $slug = self::slugLinea((string)$p['nombre']);
+                if ($slug === '' || ($t === 'abuelo' && isset($padrillos[$slug]))) {
+                    continue;
+                }
+                $padrillos[$slug] = true;
+                $filas[] = '<li>' . self::enlazarLinea($t, $p['nombre'], $this->pais) . ' <small>' . $titulo . ' · ' . (int)$p['n'] . ($t === 'abuelo' ? ' nieto' : ' hijo') . ((int)$p['n'] === 1 ? '' : 's') . '</small></li>';
             }
         }
         return $filas;
@@ -373,13 +570,13 @@ final class Fichas
         return $tipo === 'jockey' ? Personas::jockey($nombre) : Personas::clave($nombre);
     }
 
-    private function proximas(string $tipo, int $id): array
+    /** @param string $condicion sobre la inscripción (i) y su caballo (ca) */
+    private function proximas(string $condicion, array $args): array
     {
-        $col = ['caballo' => 'i.caballo_id', 'jockey' => 'i.jockey_id', 'cuidador' => 'i.cuidador_id', 'stud' => 'i.stud_id', 'criador' => 'ca.criador_id'][$tipo];
         $st = $this->db->prepare("SELECT i.* FROM inscripcion i LEFT JOIN caballo ca ON ca.id = i.caballo_id
-            WHERE $col = ? AND i.fecha >= ? ORDER BY i.fecha, i.hora, i.carrera");
+            WHERE $condicion AND i.fecha >= ? ORDER BY i.fecha, i.hora, i.carrera");
         try {
-            $st->execute([$id, date('Y-m-d')]);
+            $st->execute([...$args, date('Y-m-d')]);
         } catch (\PDOException) {
             return [];      // todavía no se publicó ningún programa
         }
@@ -614,5 +811,6 @@ tr.retirado td { text-decoration:line-through; color:var(--suave); }
 .chaquetilla svg { vertical-align:middle; }
 a.cal { text-decoration:none; font-size:15px; }
 .resultados { padding-left:18px; } .resultados li { margin:3px 0; }
+.hijos .n { text-align:right; }
 CSS;
 }
