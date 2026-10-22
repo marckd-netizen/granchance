@@ -483,6 +483,23 @@ final class Publicador
         file_put_contents($archivo, preg_replace('/(<div class="gc-barra"><a href="\.\.\/">[^<]*<\/a>)/', '$1' . $enlace, $html, 1));
     }
 
+    /**
+     * Pone en todos los programas publicados (de cualquier país) el JavaScript que iguala el ancho de las tablas de
+     * antecedentes, o lo reemplaza si cambió: así llega también a los que ya no se regeneran.
+     */
+    public static function actualizarAncho(string $carpeta): void
+    {
+        foreach (glob("$carpeta/programas/*.html") ?: [] as $a) {
+            $html = (string)file_get_contents($a);
+            $nuevo = str_contains($html, '<script id="gc-ancho">')
+                ? preg_replace_callback('/<script id="gc-ancho">.*?<\/script>/s', fn () => ProgramaNoOficial::JS_ANCHO, $html, 1)
+                : preg_replace_callback('/<\/body>/', fn () => ProgramaNoOficial::JS_ANCHO . '</body>', $html, 1);
+            if ($nuevo !== null && $nuevo !== $html) {
+                file_put_contents($a, $nuevo);
+            }
+        }
+    }
+
     /** fecha => [hipódromos] de los programas ya publicados. */
     public function fechasPublicadas(): array
     {
@@ -753,6 +770,7 @@ final class Publicador
         unset($r);
         krsort($reuniones);
         self::calendarioGeneral($carpeta);
+        self::actualizarAncho($carpeta);
         file_put_contents($carpeta . '/indice.json', json_encode(['actualizado' => date('c'), 'analytics' => $analytics, 'reuniones' => array_values($reuniones)],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 

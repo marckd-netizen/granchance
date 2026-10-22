@@ -487,7 +487,7 @@ final class ProgramaNoOficial
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c + ['fecha' => $p['fecha']], $e);
         }
-        return $o . self::JS_HORAS . '</body></html>';
+        return $o . self::JS_HORAS . self::JS_ANCHO . '</body></html>';
     }
 
     /** Barra de arriba: calendario de reuniones, reuniones del día, anterior/siguiente y enlaces a cada carrera. */
@@ -662,6 +662,29 @@ final class ProgramaNoOficial
     p.className = 'gc-zona';
     p.textContent = 'Las horas están en tu zona horaria (' + Intl.DateTimeFormat().resolvedOptions().timeZone + '). Con el mouse sobre una hora se ve la del hipódromo.';
     h.before(p);
+  }
+})();</script>
+JS;
+
+    /**
+     * Las tablas de antecedentes de toda la página quedan con las columnas alineadas, y así todas del mismo ancho.
+     * Va también en los programas ya publicados (Publicador::actualizarAncho), por eso lleva el id: si cambia, se
+     * reemplaza.
+     */
+    public const JS_ANCHO = <<<'JS'
+<script id="gc-ancho">(() => {
+  // Columnas alineadas: cada columna toma el ancho de la más ancha de esa columna en todas las tablas con los mismos
+  // encabezados. Primero se mide todo y después se cambia, así el navegador no recalcula la página con cada tabla.
+  const grupos = {};
+  for (const t of document.querySelectorAll('table.ant')) {
+    const celdas = t.tHead ? [...t.tHead.rows[0].cells] : [];
+    const clave = celdas.map(c => c.textContent).join('|');
+    const g = grupos[clave] || (grupos[clave] = {tablas: [], anchos: celdas.map(() => 0)});
+    g.tablas.push(celdas);
+    celdas.forEach((c, i) => { g.anchos[i] = Math.max(g.anchos[i], c.getBoundingClientRect().width); });
+  }
+  for (const g of Object.values(grupos)) {
+    for (const celdas of g.tablas) celdas.forEach((c, i) => { c.style.width = c.style.minWidth = Math.ceil(g.anchos[i]) + 'px'; });
   }
 })();</script>
 JS;
