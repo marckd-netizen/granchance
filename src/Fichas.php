@@ -74,7 +74,7 @@ final class Fichas
     public static function enlazarLinea(string $tipo, ?string $nombre, ?string $pais = null): string
     {
         $n = htmlspecialchars((string)$nombre, ENT_QUOTES);
-        return self::slugLinea((string)$nombre) !== '' ? '<a href="' . htmlspecialchars(self::urlLinea($tipo, (string)$nombre, $pais), ENT_QUOTES) . '">' . $n . '</a>' : $n;
+        return self::slugLinea((string)$nombre) !== '' ? '<a class="ficha" href="' . htmlspecialchars(self::urlLinea($tipo, (string)$nombre, $pais), ENT_QUOTES) . '">' . $n . '</a>' : $n;
     }
 
     /**
