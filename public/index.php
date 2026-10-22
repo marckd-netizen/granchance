@@ -56,10 +56,6 @@ if ($filtro !== null) {
 $titulo = $filtro !== null ? $hips[$filtro] : $pais;
 $proximas = array_reverse(array_values(array_filter($reuniones, fn ($r) => $r['fecha'] >= $hoy)));
 $pasadas = array_values(array_filter($reuniones, fn ($r) => $r['fecha'] < $hoy));
-$porMes = [];
-foreach ($pasadas as $r) {
-    $porMes[substr($r['fecha'], 0, 7)][] = $r;
-}
 
 $variosPaises = count($paises) > 1 && $pais === null;
 // Banderas en SVG (los emoji de bandera no se ven en Windows), de 3:2. Un país sin bandera queda con el nombre.
@@ -88,6 +84,11 @@ $fila = function (array $r) use ($e, $dias, $variosPaises, $bandera): string {
     }
     return $o . '</td></tr>';
 };
+// Las reuniones pasadas por día, ya armadas, para el calendario: el script muestra las del día que se elige.
+$porDia = [];
+foreach ($pasadas as $r) {
+    $porDia[$r['fecha']] = ($porDia[$r['fecha']] ?? '') . $fila($r);
+}
 ?><!doctype html>
 <html lang="es">
 <head>
@@ -120,7 +121,20 @@ td:first-child { white-space:nowrap; width:9em; } td:nth-child(2) { width:9em; }
 .filtro .hips { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 0 18px; padding-left:10px; border-left:2px solid var(--linea); }
 .proximas td { background:var(--cabecera); }
 .bandera { width:21px; height:14px; vertical-align:-2px; margin-left:2px; border-radius:2px; box-shadow:0 0 0 1px var(--linea); }
-details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:14px 0 4px; }
+.historial { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+.calendario { width:252px; flex:none; border:1px solid var(--linea); border-radius:8px; padding:8px; }
+.calendario .mes { display:flex; justify-content:space-between; align-items:center; font-weight:600; margin-bottom:6px; }
+.calendario button { font:inherit; color:var(--acento); background:none; border:0; padding:2px 8px; cursor:pointer; border-radius:6px; }
+.calendario button:disabled { color:var(--linea); cursor:default; }
+.calendario .dias { display:grid; grid-template-columns:repeat(7, 1fr); gap:2px; text-align:center; }
+.calendario .dias span { color:var(--suave); font-size:12px; padding:2px 0; }
+.calendario .dias button { padding:5px 0; color:var(--suave); }
+.calendario .dias button.hay { color:var(--acento); background:var(--cabecera); font-weight:600; }
+.calendario .dias button.hay:hover { outline:1px solid var(--acento); }
+.calendario .dias button.elegido { background:var(--acento); color:var(--fondo); }
+.dia { flex:1 1 360px; min-width:0; }
+.dia h3 { font-size:15px; margin:0 0 6px; }
+.dia td:first-child { display:none; }
 </style>
 </head>
 <body>
@@ -143,15 +157,61 @@ details summary { cursor:pointer; color:var(--acento); font-weight:600; margin:1
 <h2>Próximas reuniones</h2>
 <table class="proximas"><?php foreach ($proximas as $r) { echo $fila($r); } ?></table>
 <?php endif ?>
-<?php $i = 0; foreach ($porMes as $mes => $lista): [$a, $m] = explode('-', $mes); ?>
-<?php if ($i++ < 2): ?>
-<h2><?= $meses[(int)$m] . ' ' . $a ?></h2>
-<table><?php foreach ($lista as $r) { echo $fila($r); } ?></table>
-<?php else: ?>
-<details><summary><?= $meses[(int)$m] . ' ' . $a ?> (<?= count($lista) ?>)</summary>
-<table><?php foreach ($lista as $r) { echo $fila($r); } ?></table></details>
+<?php if ($pasadas): ?>
+<h2>Reuniones anteriores</h2>
+<div class="historial" id="historial" hidden>
+<div class="calendario"><div class="mes"><button type="button" data-ir="-1" aria-label="Mes anterior">‹</button><span></span><button type="button" data-ir="1" aria-label="Mes siguiente">›</button></div><div class="dias"></div></div>
+<div class="dia"><h3></h3><table></table></div>
+</div>
+<h2>Últimas <?= min(20, count($pasadas)) ?> reuniones</h2>
+<table><?php foreach (array_slice($pasadas, 0, 20) as $r) { echo $fila($r); } ?></table>
+<script>
+(() => {
+    const porDia = <?= json_encode($porDia, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
+    const meses = <?= json_encode(array_values($meses), JSON_UNESCAPED_UNICODE) ?>;
+    const dias = <?= json_encode($dias, JSON_UNESCAPED_UNICODE) ?>;
+    const fechas = Object.keys(porDia).sort();
+    const caja = document.getElementById('historial'), titulo = caja.querySelector('.mes span'), grilla = caja.querySelector('.dias');
+    const primero = fechas[0].slice(0, 7), ultimo = fechas[fechas.length - 1].slice(0, 7);
+    let elegido = fechas[fechas.length - 1], mes = ultimo;
+    const elegir = (f) => {
+        elegido = f;
+        const [a, m, d] = f.split('-').map(Number);
+        caja.querySelector('.dia h3').textContent = dias[new Date(a, m - 1, d).getDay()] + ' ' + d + ' de ' + meses[m - 1].toLowerCase() + ' de ' + a;
+        caja.querySelector('.dia table').innerHTML = porDia[f];
+        dibujar();
+    };
+    const dibujar = () => {
+        const [a, m] = mes.split('-').map(Number);
+        titulo.textContent = meses[m - 1] + ' ' + a;
+        caja.querySelector('[data-ir="-1"]').disabled = mes <= primero;
+        caja.querySelector('[data-ir="1"]').disabled = mes >= ultimo;
+        let html = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((n) => '<span>' + n + '</span>').join('');
+        html += '<span></span>'.repeat((new Date(a, m - 1, 1).getDay() + 6) % 7);
+        for (let d = 1, n = new Date(a, m, 0).getDate(); d <= n; d++) {
+            const f = mes + '-' + String(d).padStart(2, '0');
+            html += porDia[f]
+                ? '<button type="button" class="hay' + (f === elegido ? ' elegido' : '') + '" data-fecha="' + f + '">' + d + '</button>'
+                : '<button type="button" disabled>' + d + '</button>';
+        }
+        grilla.innerHTML = html;
+    };
+    caja.addEventListener('click', (ev) => {
+        const b = ev.target.closest('button');
+        if (!b || b.disabled) return;
+        if (b.dataset.fecha) {
+            elegir(b.dataset.fecha);
+        } else {
+            const [a, m] = mes.split('-').map(Number), x = new Date(a, m - 1 + Number(b.dataset.ir), 1);
+            mes = x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0');
+            dibujar();
+        }
+    });
+    caja.hidden = false;
+    elegir(elegido);
+})();
+</script>
 <?php endif ?>
-<?php endforeach ?>
 <?php if (!empty($indice['actualizado'])): ?>
 <p><small>Actualizado el <?= date('d/m/Y H:i', strtotime($indice['actualizado'])) ?>.</small></p>
 <?php endif ?>
