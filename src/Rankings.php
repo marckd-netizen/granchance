@@ -10,7 +10,8 @@ use PDO;
  * % entre los 3 primeros o velocidad promedio, con filtros por año y mes, distancias, hipódromos, superficie y estado
  * de la pista (y sexo y pelaje para caballos y potrillos). Se arman al pedirlos, leyendo la base. Con ?pais=hong-kong leen
  * la base de Hong Kong (config 'hk'), que no tiene studs ni criadores ni año de nacimiento, ni fichas a las que enlazar;
- * con ?pais=brasil, la de Brasil (config 'br'), que tiene todo menos los premios (el JCB no publica la bolsa) y las fichas.
+ * con ?pais=brasil, la de Brasil (config 'br'), que tiene todo menos los premios (el JCB no publica la bolsa) y las fichas;
+ * con ?pais=argentina, la de Argentina (config 'ar'), que tiene todo menos las fichas.
  */
 final class Rankings
 {
@@ -40,18 +41,24 @@ final class Rankings
     private const PELAJES_BR = ['Castanh' => 'Castanho', 'Alaz' => 'Alazão', 'Tordilh' => 'Tordilho', 'Pret' => 'Preto'];
     private const ESTADOS_BR = ['leve', 'macia', 'pesada', 'encharcada', 'úmida', 'seca'];
     private const SEXOS_BR = ['m' => 'Machos', 'h' => 'Hembras', 'c' => 'Castrados'];
-    private const PAISES = ['hong-kong' => 'Hong Kong', 'brasil' => 'Brasil'];
+    /** Pelajes de Argentina: el Stud Book los abrevia (Z, A, T, ZC...). */
+    private const PELAJES_AR = ['z' => 'Zaino', 'a' => 'Alazán', 't' => 'Tordillo', 'zc' => 'Zaino colorado', 'zd' => 'Zaino doradillo',
+        'at' => 'Alazán tostado', 'zn' => 'Zaino negro'];
+    private const ESTADOS_AR = ['normal', 'húmeda', 'pesada', 'fangosa'];
+    private const PAISES = ['hong-kong' => 'Hong Kong', 'brasil' => 'Brasil', 'argentina' => 'Argentina'];
 
     /** true mientras se arma un ranking de Hong Kong ($this->db es entonces la base de Hong Kong). */
     private bool $hk = false;
     /** true mientras se arma un ranking de Brasil ($this->db es entonces la base de Brasil). */
     private bool $br = false;
+    /** true mientras se arma un ranking de Argentina ($this->db es entonces la base de Argentina). */
+    private bool $ar = false;
     /** @var array<string, PDO> ?pais= => base de ese país */
     private array $otras;
 
-    public function __construct(private PDO $db, private string $carpeta, ?PDO $dbHk = null, ?PDO $dbBr = null)
+    public function __construct(private PDO $db, private string $carpeta, ?PDO $dbHk = null, ?PDO $dbBr = null, ?PDO $dbAr = null)
     {
-        $this->otras = array_filter(['hong-kong' => $dbHk, 'brasil' => $dbBr]);
+        $this->otras = array_filter(['hong-kong' => $dbHk, 'brasil' => $dbBr, 'argentina' => $dbAr]);
         foreach ([$this->db, ...array_values($this->otras)] as $base) {
             $base->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         }
@@ -60,7 +67,7 @@ final class Rankings
     /** El ?pais= del ranking que se está armando (null en Uruguay). */
     private function pais(): ?string
     {
-        return $this->hk ? 'hong-kong' : ($this->br ? 'brasil' : null);
+        return $this->hk ? 'hong-kong' : ($this->br ? 'brasil' : ($this->ar ? 'argentina' : null));
     }
 
     private function qPais(string $sep = '?'): string
@@ -96,11 +103,11 @@ final class Rankings
             if (!isset($this->otras[$pais]) || ($pais === 'hong-kong' && in_array($de, self::SIN_HK, true))) {
                 return null;
             }
-            [$uy, $this->db, $this->hk, $this->br] = [$this->db, $this->otras[$pais], $pais === 'hong-kong', $pais === 'brasil'];
+            [$uy, $this->db, $this->hk, $this->br, $this->ar] = [$this->db, $this->otras[$pais], $pais === 'hong-kong', $pais === 'brasil', $pais === 'argentina'];
             try {
                 return $this->armar($de, $q);
             } finally {
-                [$this->db, $this->hk, $this->br] = [$uy, false, false];
+                [$this->db, $this->hk, $this->br, $this->ar] = [$uy, false, false, false];
             }
         }
         return $this->armar($de, $q);
@@ -140,11 +147,20 @@ final class Rankings
         }
         // Premios: lo que cobró cada caballo por su puesto (ver Fichas::premio), sumado por grupo. En pesos; los
         // de las carreras en dólares van aparte.
-        $st = $this->db->prepare("SELECT $grupo AS clave, c.bolsa, c.bolsa_detalle, a.puesto
+        $st = $this->db->prepare("SELECT $grupo AS clave, c.bolsa, c.bolsa_detalle, " . ($this->ar ? 'c.bolsa_dolares, ' : '') . "a.puesto
             FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id JOIN caballo ca ON ca.id = a.caballo_id
             WHERE a.puesto BETWEEN 1 AND 5 AND $grupo IS NOT NULL AND $where");
         $st->execute($args);
         foreach ($st as $r) {
+            if ($this->ar) {
+                // "1º $ 1,987,443 | 2º $ 473,214 | ...": en pesos, y además en dólares con el cambio que usa el Stud Book para la bolsa.
+                if (isset($filas[(string)$r['clave']]) && preg_match('/(?:^|\|)\s*' . (int)$r['puesto'] . '\D{1,3}\$\s*([\d.,]+)/u', (string)$r['bolsa_detalle'], $m)) {
+                    $pesos = (int)preg_replace('/\D/', '', $m[1]);
+                    $filas[(string)$r['clave']]['premios'] += $pesos;
+                    $filas[(string)$r['clave']]['premios_usd'] += (float)$r['bolsa'] > 0 ? $pesos * (float)$r['bolsa_dolares'] / (float)$r['bolsa'] : 0;
+                }
+                continue;
+            }
             $p = $this->hk ? ((float)$r['bolsa'] > 0 ? ['HK$', (int)round((float)$r['bolsa'] * self::REPARTO_HK[(int)$r['puesto']])] : null)
                 : Fichas::premio($r['bolsa'], $r['bolsa_detalle'], (int)$r['puesto']);
             if (isset($filas[(string)$r['clave']]) && $p) {
@@ -170,9 +186,13 @@ final class Rankings
             . '. <a href="' . $this->url($de, $f, ['todos' => 1]) . '">Ver todos</a>' : '') . '. Tocá un título de columna para ordenar.</p>';
         $o .= $this->tabla($de, $ficha, $filas, $f);
         $o .= '<p class="nota">Vel. prom.: velocidad promedio en km/h de cada caballo en sus carreras (distancia sobre su tiempo'
-            . ($this->br ? '; el JCB publica solo el del ganador, el de los demás se estima con los cuerpos que le sacó). El JCB no publica los premios.'
-                : '). Premios: lo que pagó la carrera al puesto de cada caballo, del 1º al 5º, ' . ($this->hk ? 'en dólares de Hong Kong, estimado con el reparto habitual del HKJC (57 %, 22 %, 11,5 %, 6 % y 3,5 % de la bolsa).'
-                : 'según la condición (estimado con el reparto habitual si la condición no trae el detalle).')) . '</p>';
+            . ($this->br || $this->ar ? '; ' . ($this->br ? 'el JCB' : 'el Stud Book') . ' publica solo el del ganador, el de los demás se estima con los cuerpos que le sacó' : '') . ').'
+            . ($this->br ? ' El JCB no publica los premios.' : ' Premios: lo que pagó la carrera al puesto de cada caballo, del 1º al 5º, '
+                . match (true) {
+                    $this->hk => 'en dólares de Hong Kong, estimado con el reparto habitual del HKJC (57 %, 22 %, 11,5 %, 6 % y 3,5 % de la bolsa).',
+                    $this->ar => 'en pesos según el Stud Book, y debajo en dólares con el cambio que usa el Stud Book para cada carrera.',
+                    default => 'según la condición (estimado con el reparto habitual si la condición no trae el detalle).',
+                }) . '</p>';
         return $this->documento('Ranking de ' . mb_strtolower($titulo) . $lugar, $o);
     }
 
@@ -316,9 +336,9 @@ final class Rankings
             $nombre = $e($r['nombre']);
             $nombre = $ficha ? '<a href="' . $e(Fichas::url($ficha, (int)$r['clave'], (string)$r['nombre'])) . '">' . $nombre . '</a>'
                 : ($this->pais() ? $nombre : '<a href="/buscar?q=' . rawurlencode((string)$r['nombre']) . '">' . $nombre . '</a>');
-            $o .= '<tr><td class="num">' . ($i + 1) . '</td><td>' . $nombre . (!empty($r['pais']) && $r['pais'] !== 'URU' ? ' <small>(' . $e($r['pais']) . ')</small>' : '') . '</td>';
+            $o .= '<tr><td class="num">' . ($i + 1) . '</td><td>' . $nombre . (!empty($r['pais']) && $r['pais'] !== ($this->ar ? 'ARG' : 'URU') && !str_ends_with((string)$r['nombre'], ')') ? ' <small>(' . $e($r['pais']) . ')</small>' : '') . '</td>';
             if (in_array($de, ['caballos', 'potrillos'], true)) {
-                $o .= '<td>' . $e($this->hk ? $r['sexo'] : (['m' => 'M', 'h' => 'H', 'c' => 'C'][$r['sexo']] ?? '')) . '</td><td>' . $e(self::PELAJES[$r['pelaje']] ?? $r['pelaje']) . '</td><td class="num">'
+                $o .= '<td>' . $e($this->hk ? $r['sexo'] : (['m' => 'M', 'h' => 'H', 'c' => 'C'][strtolower((string)$r['sexo'])] ?? '')) . '</td><td>' . $e(($this->ar ? self::PELAJES_AR : self::PELAJES)[strtolower((string)$r['pelaje'])] ?? $r['pelaje']) . '</td><td class="num">'
                     . ($r['anio_nac'] ? (int)date('Y') - (int)$r['anio_nac'] : '') . '</td>';
             } else {
                 $o .= '<td class="num">' . (int)$r['caballos'] . '</td>';
@@ -363,7 +383,7 @@ final class Rankings
     private function estados(): array
     {
         return $this->hk ? $this->db->query("SELECT pista FROM carrera WHERE pista <> '' GROUP BY pista ORDER BY COUNT(*) DESC")->fetchAll(PDO::FETCH_COLUMN)
-            : ($this->br ? self::ESTADOS_BR : self::ESTADOS);
+            : ($this->br ? self::ESTADOS_BR : ($this->ar ? self::ESTADOS_AR : self::ESTADOS));
     }
 
     /** @return array<string,string> valor => texto */
@@ -384,6 +404,9 @@ final class Rankings
     {
         if ($this->br) {
             return self::PELAJES_BR;
+        }
+        if ($this->ar) {
+            return self::PELAJES_AR;
         }
         if (!$this->hk) {
             return self::PELAJES;

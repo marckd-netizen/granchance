@@ -8,6 +8,8 @@ use PDO;
 /** Guarda en MySQL (base granchance_ar) lo que devuelve ParserResultados. Todo es UPSERT: se puede re-cargar una reunión sin duplicar. */
 final class Repositorio
 {
+    private const METROS_CUERPO = 2.4;
+
     /** @var array<string, int> caché tipo|codigo => id */
     private array $personas = [];
     /** @var array<string, int> caché codigo => id */
@@ -115,6 +117,10 @@ final class Repositorio
             $c['tiempo_ganador_seg'], $c['retirados'],
         ]);
         $carreraId = (int)$this->db->lastInsertId();
+        // El Stud Book publica solo el tiempo del ganador: el de los demás se estima con los cuerpos al ganador (columna Acum.),
+        // un cuerpo = 2,4 m a la velocidad del ganador.
+        $tg = $c['tiempo_ganador_seg'];
+        $segCuerpo = $tg && $c['distancia'] ? self::METROS_CUERPO * $tg / $c['distancia'] : null;
 
         // Una corrección oficial puede cambiar puestos o caballos: se reemplaza el detalle completo.
         $this->db->prepare('DELETE FROM actuacion WHERE carrera_id = ?')->execute([$carreraId]);
@@ -134,7 +140,9 @@ final class Repositorio
                 $a['retiro_motivo'], $a['tratamiento'], $a['marca'],
                 $this->persona('jockey', $a['jockey']), $this->persona('cuidador', $a['cuidador']), $this->persona('stud', $a['stud']),
                 $a['peso_asignado'], $a['dist_anterior'], $a['dist_acumulada'], $a['sport'],
-                $a['puesto'] === 1 ? $c['tiempo_ganador'] : null, $a['puesto'] === 1 ? $c['tiempo_ganador_seg'] : null,
+                $a['puesto'] === 1 ? $c['tiempo_ganador'] : null,
+                $a['puesto'] === 1 ? $tg : ($a['puesto'] !== null && $segCuerpo !== null && ($cp = ParserResultados::cuerpos($a['dist_acumulada'])) !== null
+                    ? round($tg + $cp * $segCuerpo, 2) : null),
             ]);
         }
     }

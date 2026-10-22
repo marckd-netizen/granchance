@@ -14,7 +14,7 @@ $tipo = (string)($_GET['tipo'] ?? '');
 try {
     $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
     $fichas = new GranChance\Fichas($db, __DIR__);
-    // Los rankings de Hong Kong (?pais=hong-kong) y de Brasil (?pais=brasil) leen su propia base; si no está configurada o
+    // Los rankings de Hong Kong (?pais=hong-kong), Brasil (?pais=brasil) y Argentina (?pais=argentina) leen su propia base; si no está configurada o
     // no responde, ese país no aparece.
     $otra = function (string $pais) use ($config, $tipo): ?PDO {
         if ($tipo !== 'ranking' || empty($config[$pais]['db']['dsn'])) {
@@ -28,7 +28,7 @@ try {
             return null;
         }
     };
-    $rankings = new GranChance\Rankings($db, __DIR__, $otra('hk'), $otra('br'));
+    $rankings = new GranChance\Rankings($db, __DIR__, $otra('hk'), $otra('br'), $otra('ar'));
     $html = match (true) {
         $tipo === 'buscar' => $fichas->buscar((string)($_GET['q'] ?? '')),
         $tipo === 'ranking' && empty($_GET['de']) => $rankings->indice(),

@@ -40,6 +40,12 @@ function procesarReunionAr(Cliente $cli, ParserResultados $parser, Repositorio $
         $html = $cli->reunion((int)$r['sb_id'], $r['slug'], $usarCache);
         $d['bytes'] = strlen($html);
         $res = $parser->reunion($html);
+        if (array_filter($res['carreras'], fn ($c) => $c['programa'])) {
+            // La página todavía muestra el programa: se vuelve a pedir en la próxima carga.
+            $repo->registrarDescarga((int)$r['sb_id'], ['estado' => 'pendiente', 'bytes' => $d['bytes'], 'detalle' => 'todavía sin resultados']);
+            registro("{$r['slug']}: todavía sin resultados");
+            return 'vacio';
+        }
         for ($intento = 1; ; $intento++) {
             try {
                 $n = $repo->guardarReunion($r, $res, $cli->archivoReunion((int)$r['sb_id'], $r['slug']));

@@ -38,6 +38,16 @@ final class Cliente
         return $this->pagina(self::BASE . "reuniones/detalle/$id/$slug", $this->archivoReunion($id, $slug), $usarCache, '<section class="carreras', 'carrera-cabecera-titulo');
     }
 
+    /**
+     * La misma página antes de la reunión, con el programa (anotados, retirados, jockeys y pesos). Se pide siempre y se
+     * guarda aparte (<slug>_<id>_programa.html.gz), así no pisa el crudo de los resultados.
+     */
+    public function programa(int $id, string $slug): string
+    {
+        $archivo = substr($this->archivoReunion($id, $slug), 0, -strlen('.html.gz')) . '_programa.html.gz';
+        return $this->pagina(self::BASE . "reuniones/detalle/$id/$slug", $archivo, false, '<section class="carreras', 'carrera-cabecera-titulo');
+    }
+
     public function archivoReunion(int $id, string $slug): string
     {
         // 20150102-san-isidro-1 → raw/ar/2015/01/20150102-san-isidro-1_16141.html.gz

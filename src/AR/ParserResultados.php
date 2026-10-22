@@ -84,7 +84,7 @@ final class ParserResultados
             'numero' => (int)$m[1], 'nro_oficial' => null, 'hora' => null, 'premio' => null, 'grupo' => null, 'distancia' => null,
             'superficie' => null, 'recorrido' => null, 'pista' => null, 'categoria' => null, 'condicion' => null,
             'bolsa' => null, 'bolsa_dolares' => null, 'bolsa_detalle' => null, 'tiempo_ganador' => null, 'tiempo_ganador_seg' => null,
-            'retirados' => null, 'ganador' => null, 'actuaciones' => [],
+            'retirados' => null, 'ganador' => null, 'actuaciones' => [], 'programa' => false,
         ];
         $hora = self::texto($x->query('.//span[contains(@class,"carrera-cabecera-hora")]', $h2)->item(0));
         if ($fecha !== null && preg_match('#^(\d{1,2}):(\d\d)$#', $hora, $mh)) {
@@ -151,6 +151,13 @@ final class ParserResultados
         foreach ($x->query('//table[.//th[normalize-space()="Ejemplar"] and .//th[normalize-space()="Pago"]]') as $tab) {
             $c['actuaciones'] = array_merge($c['actuaciones'], $this->resultados($x, $tab, $fecha));
         }
+        // Reunión que todavía no se corrió: en lugar de RESULTADOS, la tabla PROGRAMA (sin peso del caballo ni puestos).
+        if ($c['actuaciones'] === []) {
+            foreach ($x->query('//table[contains(@class,"programa-original") and .//th[normalize-space()="Ejemplar"]]') as $tab) {
+                $c['programa'] = true;
+                $c['actuaciones'] = array_merge($c['actuaciones'], $this->resultados($x, $tab, $fecha, true));
+            }
+        }
         $retirados = [];
         foreach ($x->query('//table[contains(@class,"labels-no-destacado") and .//th[normalize-space()="Ejemplar"]]') as $tab) {
             foreach ($this->retirados($x, $tab) as $a) {
@@ -184,18 +191,18 @@ final class ParserResultados
     }
 
     /** Filas de la tabla RESULTADOS. Las columnas se ubican por el encabezado, que cambió con los años (H y T se agregaron después). */
-    private function resultados(DOMXPath $x, DOMNode $tab, ?string $fecha): array
+    private function resultados(DOMXPath $x, DOMNode $tab, ?string $fecha, bool $programa = false): array
     {
         $cols = [];
         $vistos = [];
         foreach ($x->query('.//thead//th', $tab) as $i => $th) {
             $t = rtrim(self::texto($th), '.');
             $n = $vistos[$t] = ($vistos[$t] ?? 0) + 1;
-            $cols[$i] = match ($t) {
+            $cols[$i] = str_starts_with($t, '8 últimas') ? 'ultimas' : match ($t) {
                 'P' => $n === 1 ? 'puesto' : 'pelaje',
-                'Kg' => $n === 1 ? 'peso_caballo' : 'peso_asignado',
+                'Kg' => $n === 1 && !$programa ? 'peso_caballo' : 'peso_asignado',
                 'O' => 'gatera', 'Ejemplar' => 'ejemplar', 'S' => 'sexo', 'E' => 'edad', 'H' => 'marca', 'T' => 'tratamiento',
-                'Jockey' => 'jockey', 'Entrenador', 'Cuidador' => 'cuidador', 'Caballeriza' => 'stud',
+                'Jockey' => 'jockey', 'Entrenador', 'Cuidador' => 'cuidador', 'Caballeriza', 'Caballeriza / Criador' => 'stud',
                 'Cpos' => 'dist_anterior', 'Acum' => 'dist_acumulada', 'Pago' => 'sport',
                 default => 'otro_' . $t,
             };
@@ -211,6 +218,9 @@ final class ParserResultados
                 $col = $cols[$i] ?? null;
                 $v = self::texto($td);
                 switch ($col) {
+                    case 'ultimas':
+                        $a['debutante'] = str_starts_with($v, 'Debutante');
+                        break;
                     case 'puesto':
                         $a['puesto_texto'] = $v !== '' ? $v : null;
                         $a['puesto'] = ctype_digit($v) && (int)$v > 0 && (int)$v < 99 ? (int)$v : null;
@@ -223,6 +233,11 @@ final class ParserResultados
                         } else {
                             $a['nombre'] = $v;
                         }
+                        // En el programa, debajo del nombre: "por PADRE y MADRE".
+                        $ped = $x->query('.//span[contains(@class,"small")]//a[contains(@href,"/ejemplares/perfil/")]', $td);
+                        if ($ped->length >= 2) {
+                            [$a['padre_nombre'], $a['madre_nombre']] = [self::texto($ped->item(0)), self::texto($ped->item(1))];
+                        }
                         $b = $x->query('.//img[contains(@src,"/banderas/")]/@src', $td)->item(0);
                         if ($b !== null && preg_match('#/(\d+)\.\w+$#', $b->nodeValue, $mb)) {
                             $a['bandera'] = (int)$mb[1];
@@ -231,6 +246,16 @@ final class ParserResultados
                     case 'jockey': case 'cuidador': case 'stud':
                         $l = $x->query('.//a', $td)->item(0);
                         $a[$col] = $l !== null ? self::enlace($l) : ($v !== '' ? ['codigo' => null, 'slug' => null, 'nombre' => $v] : null);
+                        // Aprendiz: "Dyke Hector E. - 2" (kilos de descargo).
+                        if ($col === 'jockey' && preg_match('#\s-\s*(\d+(?:[.,]\d)?)$#', $v, $md)) {
+                            $a['descargo'] = (float)str_replace(',', '.', $md[1]);
+                        }
+                        if ($col === 'stud') {
+                            $cr = $x->query('.//a[contains(@href,"/criadores/perfil/")]', $td)->item(0);
+                            $a['criador'] = $cr === null ? null : self::enlace($cr);
+                            $l = $x->query('.//a[contains(@href,"/caballerizas/perfil/")]', $td)->item(0);
+                            $a['stud'] = $l !== null ? self::enlace($l) : $a['stud'];
+                        }
                         break;
                     case 'gatera': case 'edad': case 'peso_caballo':
                         $a[$col] = ctype_digit($v) && (int)$v > 0 ? (int)$v : null;
@@ -364,6 +389,7 @@ final class ParserResultados
             'sexo' => null, 'pelaje' => null, 'edad' => null, 'anio_nac' => null, 'peso_caballo' => null, 'marca' => null, 'tratamiento' => null,
             'jockey' => null, 'peso_asignado' => null, 'cuidador' => null, 'stud' => null, 'dist_anterior' => null, 'dist_acumulada' => null,
             'sport' => null, 'retiro_motivo' => null, 'padre_nombre' => null, 'madre_nombre' => null, 'ganador' => false,
+            'descargo' => null, 'criador' => null, 'debutante' => false,
         ];
     }
 
@@ -382,6 +408,23 @@ final class ParserResultados
         $href = $a->getAttribute('href');
         preg_match('#/([0-9A-Za-z]+)/([^/?\#]+)$#', $href, $m);
         return ['codigo' => $m[1] ?? null, 'slug' => $m[2] ?? null, 'nombre' => self::texto($a)];
+    }
+
+    /**
+     * Cuerpos al ganador de la columna Acum.: "3½ cpos" → 3.5, "¾ cpo" → 0.75, "hco" (hocico) → 0.05, "½ cza" → 0.1,
+     * "cza" → 0.15, "½ pzo" → 0.2, "pzo" → 0.3, "emp." → 0. Lo demás ("s.a.", "v.m.", "desm.", "dist.") → null.
+     */
+    public static function cuerpos(?string $t): ?float
+    {
+        $t = trim((string)$t);
+        $fijos = ['hco' => 0.05, '½ cza' => 0.1, 'cza' => 0.15, '½ pzo' => 0.2, 'pzo' => 0.3, 'emp.' => 0.0];
+        if (isset($fijos[$t])) {
+            return $fijos[$t];
+        }
+        if (!preg_match('#^(\d+)?\s*([½¼¾])?\s*cp#u', $t, $m) || ($m[1] ?? '') . ($m[2] ?? '') === '') {
+            return null;
+        }
+        return (float)($m[1] ?? 0) + ['' => 0.0, '½' => 0.5, '¼' => 0.25, '¾' => 0.75][$m[2] ?? ''];
     }
 
     /** 1'38"35/100 → 98.35; 58"20/100 → 58.20 */

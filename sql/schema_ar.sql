@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS actuacion (
   div_segundo     DECIMAL(8,2) NULL,              -- el Stud Book no publica sport a placé
   div_tercero     DECIMAL(8,2) NULL,
   tiempo          VARCHAR(16) NULL,               -- solo el del ganador
-  tiempo_seg      DECIMAL(7,2) NULL,
+  tiempo_seg      DECIMAL(7,2) NULL,              -- el del ganador; el de los demás, estimado con los cuerpos al ganador
   antidoping      TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (carrera_id, caballo_id),
   KEY (caballo_id), KEY (jockey_id), KEY (cuidador_id), KEY (stud_id),

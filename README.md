@@ -334,7 +334,7 @@ mysql -u root -p granchance_ar < sql/schema_ar.sql
 | `php bin/ar_caballos.php [--parte=0/4]` | Completa país, fecha de nacimiento, padre, madre, abuelo materno y criador con la ficha de cada ejemplar. |
 | `php bin/ar_parsear.php --id=16141 --slug=20150102-san-isidro-1 [--carrera=1]` | Muestra en JSON lo que se lee de una reunión, sin tocar la base. |
 
-Cron sugerido: `0 8 * * * cd /home/USUARIO/granchance && php bin/ar_diario.php && php bin/ar_caballos.php >> raw/ar/diario.log 2>&1`
+Cron: ver "Programa no oficial de Argentina" más abajo.
 
 - El calendario (`/reuniones?anio=AAAA&mes=MM`) trae el enlace de cada reunión (`/reuniones/detalle/16141/20150102-san-isidro-1`);
   sin la parte final (el "slug") la página da 404, por eso se guarda en `descarga.slug`. Los hipódromos se dan de alta solos.
@@ -356,3 +356,45 @@ Diferencias con Uruguay:
 - `carrera.categoria` (Condicional, Handicap, Clasico Grupo I...), `grupo` (G1, G2, G3, L, de la categoría o del nombre del premio), `recorrido`
   (Codo, Codo Nuevo, Recta, Diagonal), `pista` es el estado (Normal, Humeda, Pesada, Fangosa), `bolsa` en pesos y `bolsa_dolares`.
 - Solo hay tiempo del ganador (`carrera.tiempo_ganador` y en su `actuacion`). No publica parciales, viento ni total apostado.
+- `actuacion.tiempo_seg`: el del ganador y, para los demás, estimado con los cuerpos al ganador (`dist_acumulada`; 2,4 m por cuerpo a la
+  velocidad del ganador; hocico 0,05, media cabeza 0,1, cabeza 0,15, medio pescuezo 0,2, pescuezo 0,3). Sin cuerpos queda NULL.
+
+### Programa no oficial de Argentina
+
+El mismo programa y el mismo modelo que en Uruguay, Hong Kong y Brasil, con los datos del Stud Book (`src/AR/Velocidades.php`,
+`src/AR/Modelo.php`, `src/AR/ProgramaNoOficial.php`, `src/AR/Publicador.php`). El programa sale de la página de la reunión
+antes de correrse (tabla de anotados con jockey, kilos, caballeriza, criador, pedigrí y las últimas actuaciones).
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/ar_modelo.php [--desde=2015-01-01] [--probar=AAAA-MM-DD]` | Calcula las velocidades y entrena el modelo con las carreras de Argentina; guarda los coeficientes en `modelo_coef` de `granchance_ar`. Tarda unos 3 minutos. |
+| `php bin/ar_programa.php --id=21449` | Baja el programa de esa reunión (id del Stud Book, ver `descarga`) y arma el programa no oficial en `raw/ar/programas/AAAA-MM-DD_<sigla>.html`. |
+| `php bin/ar_publicar.php [--dias=3] [--id=21449]` | Publica en la web (la carpeta de `bin/publicar.php`) los programas de las reuniones del calendario de hoy a 3 días (hora de Argentina), guarda la predicción en `prediccion` de `granchance_ar` (congelada desde la primera carrera), arma la predicción vs resultado de las reuniones ya cargadas y rehace `indice.json`. En la web cada hipódromo es 200 + su id en la base: San Isidro 201, Palermo 202, La Plata 203 (`programas/2026-10-23_201.html`); la portada los muestra bajo Argentina. |
+
+En cPanel: crear la base `granchance_ar`, cargar el respaldo (`granchance_ar.sql.gz`), completar la sección `ar` de `config.php` y,
+la primera vez, `php bin/ar_modelo.php`. Después:
+
+```
+10 8 * * *  cd /home/USUARIO/granchance && php bin/ar_diario.php && php bin/ar_caballos.php >> raw/ar/diario.log 2>&1
+50 * * * *  cd /home/USUARIO/granchance && php bin/ar_publicar.php >> raw/ar/publicar.log 2>&1
+55 4 * * 1  cd /home/USUARIO/granchance && php bin/ar_modelo.php >> raw/ar/modelo.log 2>&1
+```
+
+El primero carga los resultados de los últimos días y las fichas de los caballos nuevos; el segundo publica los programas de
+las próximas reuniones y los actualiza cada hora con retirados y cambios de jockey hasta que larga la primera carrera, y
+publica la predicción vs resultado de las ya cargadas; el tercero reentrena el modelo los lunes.
+
+Qué cambia respecto de Uruguay:
+
+- **Par** por hipódromo, distancia, superficie (césped, arena) y **nivel**: Grupo I/II/III, Listado, Handicap, clásicos y
+  especiales, y en las condicionales las carreras ganadas que permite la condición (Cond 0 = perdedores, Cond 1...), con los
+  4 primeros en pista normal.
+- **Ajustes**: el estado de la pista (húmeda, pesada, fangosa) y, sobre eso, el recorrido (codo, codo nuevo, recta, diagonal).
+- **Equivalencias**, con los caballos que corrieron en más de un hipódromo (Palermo = 0): San Isidro +0,13 km/h, La Plata +0,17,
+  Tandil +0,58, Rosario +0,69...
+- **Modelo**: las mismas variables. El mercado sale del sport (columna Pago); los kilos, de los del programa menos el descargo del
+  aprendiz; la gatera es el número del partidor.
+- Entrenado con 2015 a octubre de 2024 y medido con las 9.456 carreras de octubre de 2024 a octubre de 2026: el de más
+  probabilidad gana el **30,9 %** (la proyección sola, 24,5 %; el favorito del sport, 35,1 %). Exacta sin orden con sus 2
+  primeros, 33,0 %; trifecta sin orden, 10,7 %. Bien calibrado.
+- Rankings: `/ranking/jockeys?pais=argentina` (y los demás), con premios en pesos y en dólares.
