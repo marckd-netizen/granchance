@@ -398,3 +398,73 @@ Qué cambia respecto de Uruguay:
   probabilidad gana el **30,9 %** (la proyección sola, 24,5 %; el favorito del sport, 35,1 %). Exacta sin orden con sus 2
   primeros, 33,0 %; trifecta sin orden, 10,7 %. Bien calibrado.
 - Rankings: `/ranking/jockeys?pais=argentina` (y los demás), con premios en pesos y en dólares.
+
+## Japón (JRA: los 10 hipódromos centrales)
+
+Baja los resultados oficiales del sitio en inglés de la JRA ([jra.jp/JRAEN](https://jra.jp/JRAEN/AP/common/main)) a una base
+aparte, `granchance_jp`: Sapporo, Hakodate, Fukushima, Niigata, Tokyo, Nakayama, Chukyo, Kyoto, Hanshin y Kokura. Las carreras
+de los hipódromos municipales (NAR) no están en ese sitio.
+
+```sh
+mysql -u root -p -e "CREATE DATABASE granchance_jp CHARACTER SET utf8mb4"
+mysql -u root -p granchance_jp < sql/schema_jp.sql
+# completar la sección 'jp' de config.php (ver config.example.php)
+```
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/jp_historico.php --desde=2015-01-01 [--hasta=AAAA-MM-DD] [--parte=0/8] [--reintentar]` | Lee el calendario de cada año, la página de cada día (reuniones y carreras) y baja cada carrera. Reanudable; `--parte=i/n` reparte las reuniones entre n procesos (la parte 0 carga el calendario). |
+| `php bin/jp_diario.php [--dias=3]` | Vuelve a bajar las reuniones de los últimos días sin usar los crudos y anota el calendario hasta 7 días adelante. Para cron. |
+| `php bin/jp_parsear.php --fecha=2016-12-25 --hipodromo=06 [--carrera=11]` | Muestra en JSON lo que se lee de una carrera, sin tocar la base. |
+
+- El sitio funciona con formularios (POST a `/JRAEN/AP/kaisai/`): `kaisaiRaceSearch` da el calendario del año (desde 2001),
+  `raceSelect` las reuniones de un día (hipódromo, Kai, día de la reunión y hora de cada carrera) y `running` cada carrera.
+  Con 0,5 s entre pedidos, ~20 s por reunión de 12 carreras.
+- Los crudos quedan en `raw/jp/AAAA/MM/AAAA-MM-DD_<código>/carrera_NN.html.gz` (~6 KB, sin menús ni scripts), los días en
+  `raw/jp/AAAA/MM/AAAA-MM-DD.html.gz` y los calendarios en `raw/jp/calendario/AAAA.html.gz`.
+
+Diferencias con Uruguay:
+
+- `caballo` se identifica por el número de la JRA (`codigo_jra`, los 4 primeros dígitos son el año de nacimiento). La ficha del
+  caballo no está en inglés: país, sexo, padre, madre, abuelo y abuela maternos y criador salen del pedigrí de cada resultado.
+  No hay pelaje.
+- `reunion.nro_reunion` es el Kai (número de reunión del año en ese hipódromo) y `dia_reunion` el día dentro de ella (1 a 12).
+- `actuacion.cuadro` es el bracket (1 a 8, el color del mandil) y `numero` el número del caballo, que es también la gatera.
+  `posiciones` es el puesto en cada codo; `dist_anterior` el margen con el de adelante (NS, HD, NK, 1/2, 1 1/4...);
+  `favorito` el orden en las apuestas y `cuota` la cuota final a ganador.
+- Los que no llegaron tienen `puesto` NULL y el código en `puesto_texto` (FF no terminó, S no largó, ER excluido; estos dos sin cuota).
+- `carrera`: `grado` (G1, G2, G3, L, J.G1...), `clase` (Maiden, Allowance, Open...), `edad`, `sexo`, `peso_tipo` (Weight for Age,
+  Handicap...), `superficie` Turf/Dirt/Jump, `pista` el going (Firm, Good, Yielding, Soft; Standard, Muddy, Sloppy), `clima`,
+  la bolsa de los 5 primeros en yenes (`bolsa_detalle`) y `premio_base` (Added Money del 1º).
+- `carrera_parcial` son los parciales de 200 m del puntero (Lap tm). `apuesta` tiene los dividendos por ¥100 de Win, Show,
+  Bracket Q., Quinella, Q.Place, Exacta, Trio y Trifecta, con lo apostado en cada una (`pozo`).
+
+### Programa no oficial de Japón
+
+El mismo programa y el mismo modelo que en los otros países (`src/JP/Velocidades.php`, `src/JP/Modelo.php`,
+`src/JP/ProgramaNoOficial.php`, `src/JP/Publicador.php`). La JRA publica el programa en inglés (Race Card, la misma página que
+el resultado) el día anterior.
+
+| Comando | Qué hace |
+|---|---|
+| `php bin/jp_modelo.php [--desde=2016-01-01] [--probar=AAAA-MM-DD]` | Calcula las velocidades y entrena el modelo; guarda los coeficientes en `modelo_coef` de `granchance_jp`. |
+| `php bin/jp_programa.php --fecha=AAAA-MM-DD --hipodromo=05 [--salida=archivo.html]` | Baja el programa de cada carrera (queda en `raw/jp/.../programa_NN.html.gz`) y arma el programa no oficial en `raw/jp/programas/AAAA-MM-DD_<sigla>.html`. |
+| `php bin/jp_publicar.php [--dias=3] [--fecha=AAAA-MM-DD --hipodromo=05]` | Publica los programas de hoy a 3 días (hora de Japón), guarda la predicción en `prediccion` (congelada desde la primera carrera), arma la predicción vs resultado y rehace `indice.json`. En la web cada hipódromo es 400 + su código: Tokyo 405, Nakayama 406, Kyoto 408, Hanshin 409 (`programas/2026-10-25_405.html`); la portada los muestra bajo Japón. |
+
+En cPanel: crear la base `granchance_jp`, cargar el respaldo (`granchance_jp.sql.gz`), completar la sección `jp` de `config.php` y,
+la primera vez, `php bin/jp_modelo.php`. Después (las carreras en Japón terminan ~4:30 de Uruguay):
+
+```
+30 10 * * *  cd /home/USUARIO/granchance && php bin/jp_diario.php >> raw/jp/diario.log 2>&1
+40 * * * *   cd /home/USUARIO/granchance && php bin/jp_publicar.php >> raw/jp/publicar.log 2>&1
+5 5 * * 1    cd /home/USUARIO/granchance && php bin/jp_modelo.php >> raw/jp/modelo.log 2>&1
+```
+
+Qué cambia respecto de Uruguay:
+
+- **Par** por hipódromo, distancia, superficie (césped, arena, obstáculos) y **nivel**: G1/G2/G3, Listed, Open, 3/2/1 victorias,
+  Maiden y Newcomer, separado por edad (2 años, 3 años, 3 y más, 4 y más), con los 4 primeros en pista Firm o Standard.
+  El sitio en inglés dice "Allowance" sin decir cuántas victorias: se saca del premio al ganador comparado con el de 1 victoria de ese año.
+- **Ajustes**: el going y, en césped, la **semana** de la reunión (el pasto se gasta con los días: semana 1 a 6).
+- **Equivalencias**, con los caballos que corrieron en más de un hipódromo (Tokyo = 0).
+- **Modelo**: las mismas variables. El mercado sale de la cuota final a ganador; "sprint" es hasta 1000 m y "fondo" 2200 m o más.

@@ -67,6 +67,7 @@ $banderas = [
     'Brasil' => '<rect width="27" height="18" fill="#009c3b"/><path d="M13.5 2 25 9 13.5 16 2 9z" fill="#ffdf00"/>' . $sol('#002776', 13.5, 9, 3.6),
     'Hong Kong' => '<rect width="27" height="18" fill="#de2910"/><g fill="#fff">'
         . implode('', array_map(fn ($a) => '<ellipse cx="13.5" cy="6.3" rx="1.6" ry="2.9" transform="rotate(' . $a . ' 13.5 9)"/>', [0, 72, 144, 216, 288])) . '</g>',
+    'Japón' => '<rect width="27" height="18" fill="#fff"/>' . $sol('#bc002d', 13.5, 9, 5.4),
 ];
 $bandera = fn (string $p) => isset($banderas[$p])
     ? '<svg class="bandera" viewBox="0 0 27 18" role="img" aria-label="' . $e($p) . '"><title>' . $e($p) . '</title>' . $banderas[$p] . '</svg>'

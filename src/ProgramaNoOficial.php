@@ -710,7 +710,8 @@ JS;
     {
         return [1 => 'Maroñas', 4 => 'Colonia', 8 => 'Flores', 9 => 'Florida', 13 => 'Las Piedras', 16 => 'Melo', 21 => 'Paysandú', 22 => 'Rocha', 101 => 'Sha Tin', 102 => 'Happy Valley',
             301 => 'Gávea', 302 => 'Cidade Jardim', 303 => 'Cristal', 304 => 'Tarumã', 305 => 'Madalena', 306 => 'Sorocaba'][$id]
-            ?? ($id > 200 && $id < 300 ? \GranChance\AR\ProgramaNoOficial::NOMBRES[$id - 200] ?? null : null) ?? "Hipódromo $id";
+            ?? ($id > 200 && $id < 300 ? \GranChance\AR\ProgramaNoOficial::NOMBRES[$id - 200] ?? null : null)
+            ?? ($id > 400 ? \GranChance\JP\ProgramaNoOficial::NOMBRES[$id - 400] ?? null : null) ?? "Hipódromo $id";
     }
 
     private static function siglaHipodromo(int $id): string
