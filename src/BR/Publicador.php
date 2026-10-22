@@ -141,9 +141,9 @@ final class Publicador
                 'uid' => sprintf('%s-%d-%d@granchance.com', $p['fecha'], $web, $c['numero']),
                 'inicio' => $inicio,
                 'fin' => $inicio->modify('+' . self::DURACION_EVENTO . ' minutes'),
-                'titulo' => sprintf('%dº %s · %s', $c['numero'], PublicadorUy::sigla($web), $c['premio']),
+                'titulo' => sprintf('%dª %s · %s', $c['numero'], PublicadorUy::sigla($web), Traduccion::premio($c['premio'])),
                 'lugar' => "$nombre, Brasil",
-                'detalle' => "{$c['distancia']} m en {$c['superficie']}." . ($c['tipo_prova'] ? " {$c['tipo_prova']}" : '')
+                'detalle' => "{$c['distancia']} m en {$c['superficie']}." . ($c['tipo_prova'] ? ' ' . Traduccion::tipo($c['tipo_prova']) : '')
                     . "\nhttps://granchance.com/programas/{$p['fecha']}_$web.html#carrera-{$c['numero']}",
             ];
         }
@@ -248,12 +248,12 @@ final class Publicador
         $o .= PublicadorUy::tablaAcierto([['', $r]], false);
         $o .= '<p class="nota">El orden es el del programa no oficial (probabilidad del modelo), contando solo a los que largaron. '
             . '<b>Exacta</b> y <b>trifecta</b>: los 2 o 3 primeros del programa llegaron 1º-2º o 1º-2º-3º, en cualquier orden. '
-            . '<b>Retorno</b>: lo que se cobraría por cada R$ 1 apostado a ganador (rateio del JCB) al primero del programa, y apostando R$ 1 a cada uno de los 3 primeros. Más de R$ 1 es ganancia.</p>';
+            . '<b>Retorno</b>: lo que se cobraría por cada R$ 1 apostado a ganador (dividendo del JCB) al primero del programa, y apostando R$ 1 a cada uno de los 3 primeros. Más de R$ 1 es ganancia.</p>';
         foreach ($carreras as $c) {
             $car = $c['carrera'];
             $ok = $r['aciertos'][$c['numero']] ?? [];
-            $o .= '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'º páreo · ' . $e($car['distancia']) . ' m en ' . $e($car['superficie'])
-                . ' · ' . $e($car['pista']) . ' <small>' . $e($car['premio']) . ($car['tipo_prova'] ? ' · ' . $e($car['tipo_prova']) : '') . '</small>'
+            $o .= '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'ª carrera · ' . $e($car['distancia']) . ' m en ' . $e($car['superficie'])
+                . ' · pista ' . $e(Traduccion::pista($car['pista'])) . ' <small>' . $e(Traduccion::premio($car['premio'])) . ($car['tipo_prova'] ? ' · ' . $e(Traduccion::tipo($car['tipo_prova'])) : '') . '</small>'
                 . ($ok ? ' <span class="ok">' . implode(' · ', array_map(fn ($x) => ['ganador' => '✔ ganador', 'exacta' => '✔ exacta', 'trifecta' => '✔ trifecta'][$x], $ok)) . '</span>' : '')
                 . '</h2><div class="dos"><table><thead><tr><th colspan="5">Programa no oficial</th></tr><tr><th>#</th><th>Nº</th><th>Caballo</th><th>Prob.</th><th>Llegó</th></tr></thead><tbody>';
             $i = 0;
@@ -263,10 +263,10 @@ final class Publicador
                     . ($p['prob'] !== null ? number_format(100 * (float)$p['prob'], 0) . ' %' : '') . '</td><td>'
                     . (!$p['corrio'] ? 'no corrió' : ($p['puesto'] !== null ? $p['puesto'] . 'º' : '—')) . '</td></tr>';
             }
-            $o .= '</tbody></table><table><thead><tr><th colspan="5">Resultado</th></tr><tr><th>Puesto</th><th>Nº</th><th>Caballo</th><th>Rateio</th><th>En el programa</th></tr></thead><tbody>';
+            $o .= '</tbody></table><table><thead><tr><th colspan="5">Resultado</th></tr><tr><th>Puesto</th><th>Nº</th><th>Caballo</th><th>Cuota</th><th>En el programa</th></tr></thead><tbody>';
             foreach (array_slice($c['llegada'], 0, 5) as $a) {
                 $fav = $c['favorito'] && $a['clave'] === $c['favorito']['clave'];
-                $o .= '<tr class="' . ($a['puesto'] !== null && $a['puesto'] <= 3 ? 'podio p' . $a['puesto'] : '') . '"><td>' . $e($a['puesto_texto'] ?: $a['puesto']) . '</td><td>'
+                $o .= '<tr class="' . ($a['puesto'] !== null && $a['puesto'] <= 3 ? 'podio p' . $a['puesto'] : '') . '"><td>' . $e(Traduccion::puesto($a['puesto_texto']) ?: $a['puesto']) . '</td><td>'
                     . $e($a['numero']) . '</td><td>' . $e($a['nombre']) . ($fav ? ' <small title="Favorito del público">(fav.)</small>' : '') . '</td><td>'
                     . ($a['sport'] !== null ? number_format((float)$a['sport'], 1, ',', '.') : '') . '</td><td>' . (isset($c['orden_de'][$a['clave']]) ? $c['orden_de'][$a['clave']] . 'º' : '') . '</td></tr>';
             }

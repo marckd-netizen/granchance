@@ -202,7 +202,7 @@ final class Fichas
         $o = '<h1>' . $e($titulo) . ' <small>' . $etiqueta . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : '') . '</small></h1>';
         if ($tipo === 'caballo') {
             $sexo = ['h' => 'hembra', 'm' => 'macho', 'c' => 'castrado'][strtolower((string)$ficha['sexo'])] ?? mb_strtolower((string)$ficha['sexo']);
-            $o .= '<p>' . $e(trim(self::pelaje($ficha['pelaje']) . ' ' . $sexo)) . ($ficha['anio_nac'] ? ', nacido en ' . (int)$ficha['anio_nac'] : '')
+            $o .= '<p>' . $e(trim(($this->pais === 'br' ? BR\Traduccion::pelaje($ficha['pelaje']) : self::pelaje($ficha['pelaje'])) . ' ' . $sexo)) . ($ficha['anio_nac'] ? ', nacido en ' . (int)$ficha['anio_nac'] : '')
                 . ($ficha['fecha_nac'] ?? null ? ' (' . date('d/m/Y', strtotime($ficha['fecha_nac'])) . ')' : '')
                 . ($ficha['padre'] ? ' · Por ' . self::enlazarLinea('padrillo', $ficha['padre'], $this->pais) : '') . ($ficha['madre'] ? ' y ' . self::enlazarLinea('madre', $ficha['madre'], $this->pais) : '')
                 . ($ficha['abuelo_materno'] ? ' (' . self::enlazarLinea('abuelo', $ficha['abuelo_materno'], $this->pais) . ')' : '');
@@ -422,6 +422,10 @@ final class Fichas
         $corridas = $st->fetchAll(PDO::FETCH_ASSOC);
         foreach ($corridas as &$a) {
             $a['puesto'] = $a['puesto'] !== null ? (int)$a['puesto'] : null;
+            if ($this->pais === 'br') {
+                // El JCB escribe en portugués: la web, en español.
+                [$a['nombre_carrera'], $a['pista'], $a['puesto_texto']] = [BR\Traduccion::premio($a['nombre_carrera']), BR\Traduccion::pista($a['pista']), BR\Traduccion::puesto($a['puesto_texto'])];
+            }
             $a['cobrado'] = $this->cobrado($a);
         }
         unset($a);
@@ -647,7 +651,7 @@ final class Fichas
         $premios = $this->pais !== 'br';
         $o = '<div class="ancha"><table class="corridas"><thead><tr><th>Fecha</th><th>Hip.</th><th>Carrera</th><th>Dist.</th><th>Pista</th><th>Puesto</th>'
             . implode('', array_map(fn ($c) => '<th>' . self::TIPOS[$c] . '</th>', $this->columnas($tipo)))
-            . '<th>Kg</th><th>' . (['hk' => 'Cuota', 'br' => 'Rateio'][$this->pais ?? ''] ?? 'Sport') . '</th>' . ($premios ? '<th>Premio cobrado</th>' : '') . '</tr></thead><tbody>';
+            . '<th>Kg</th><th>' . (['hk' => 'Cuota', 'br' => 'Cuota'][$this->pais ?? ''] ?? 'Sport') . '</th>' . ($premios ? '<th>Premio cobrado</th>' : '') . '</tr></thead><tbody>';
         foreach ($lista as $a) {
             $clave = $a['fecha'] . '_' . $this->web((int)$a['hipodromo_id']);
             $carrera = $a['numero'] . 'ª ' . $e($a['nombre_carrera']);

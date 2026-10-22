@@ -38,7 +38,7 @@ final class Rankings
     /** Reparto habitual de la bolsa del HKJC del 1º al 5º. */
     private const REPARTO_HK = [1 => .57, .22, .115, .06, .035];
     /** Pelajes de Brasil: el JCB los escribe en masculino o femenino según el sexo (Castanho, Castanha). */
-    private const PELAJES_BR = ['Castanh' => 'Castanho', 'Alaz' => 'Alazão', 'Tordilh' => 'Tordilho', 'Pret' => 'Preto'];
+    private const PELAJES_BR = ['Castanh' => 'Castaño', 'Alaz' => 'Alazán', 'Tordilh' => 'Tordillo', 'Pret' => 'Negro'];
     private const ESTADOS_BR = ['leve', 'macia', 'pesada', 'encharcada', 'úmida', 'seca'];
     private const SEXOS_BR = ['m' => 'Machos', 'h' => 'Hembras', 'c' => 'Castrados'];
     /** Pelajes de Argentina: el Stud Book los abrevia (Z, A, T, ZC...). */
@@ -286,7 +286,8 @@ final class Rankings
             . '<option value="cesped"' . $sel($f['sup'] === 'cesped') . '>Césped</option></select></label>';
         $o .= '<label>Pista <select name="estado"><option value="">Todas</option>';
         foreach ($this->estados() as $s) {
-            $o .= '<option' . $sel($f['estado'] === $s) . '>' . $s . '</option>';
+            // En Brasil el valor es el del JCB (leve, macia...) y se muestra en español.
+            $o .= '<option value="' . $e($s) . '"' . $sel($f['estado'] === $s) . '>' . $e($this->br ? BR\Traduccion::pista($s) : $s) . '</option>';
         }
         $o .= '</select></label>';
         if (in_array($de, ['caballos', 'potrillos'], true)) {
@@ -339,7 +340,7 @@ final class Rankings
                 : '<a href="' . $e(Fichas::url($ficha, (int)$r['clave'], (string)$r['nombre'], self::FICHAS[$this->pais()] ?? null)) . '">' . $nombre . '</a>';
             $o .= '<tr><td class="num">' . ($i + 1) . '</td><td>' . $nombre . (!empty($r['pais']) && $r['pais'] !== ($this->ar ? 'ARG' : 'URU') && !str_ends_with((string)$r['nombre'], ')') ? ' <small>(' . $e($r['pais']) . ')</small>' : '') . '</td>';
             if (in_array($de, ['caballos', 'potrillos'], true)) {
-                $o .= '<td>' . $e($this->hk ? $r['sexo'] : (['m' => 'M', 'h' => 'H', 'c' => 'C'][strtolower((string)$r['sexo'])] ?? '')) . '</td><td>' . $e(($this->ar ? self::PELAJES_AR : self::PELAJES)[strtolower((string)$r['pelaje'])] ?? $r['pelaje']) . '</td><td class="num">'
+                $o .= '<td>' . $e($this->hk ? $r['sexo'] : (['m' => 'M', 'h' => 'H', 'c' => 'C'][strtolower((string)$r['sexo'])] ?? '')) . '</td><td>' . $e($this->br ? BR\Traduccion::pelaje($r['pelaje']) : (($this->ar ? self::PELAJES_AR : self::PELAJES)[strtolower((string)$r['pelaje'])] ?? $r['pelaje'])) . '</td><td class="num">'
                     . ($r['anio_nac'] ? (int)date('Y') - (int)$r['anio_nac'] : '') . '</td>';
             } else {
                 $o .= '<td class="num">' . (int)$r['caballos'] . '</td>';

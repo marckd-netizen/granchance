@@ -169,7 +169,7 @@ final class ProgramaNoOficial
             return $r;
         }
         if (!$ant) {
-            $r['notas'][] = $h['estreante'] ? 'Estreante' : 'Sin carreras en la base (corre en Brasil desde antes de 2015 o en otro hipódromo)';
+            $r['notas'][] = $h['estreante'] ? 'Debuta' : 'Sin carreras en la base (corre en Brasil desde antes de 2015 o en otro hipódromo)';
             return $r + self::notasHoy($h);
         }
         $u = $ant[0];
@@ -297,20 +297,20 @@ final class ProgramaNoOficial
         $titulo = sprintf('Programa no oficial · %s · %s', self::NOMBRES[$p['hipodromo']], date('d/m/Y', strtotime($p['fecha'])));
         $o = '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>' . $e($titulo) . '</title><style>' . ProgramaUy::CSS . self::CSS . '</style></head><body>';
-        $o .= '<nav class="navegacion"><div class="fila carreras">Páreos:';
+        $o .= '<nav class="navegacion"><div class="fila carreras">Carreras:';
         foreach ($p['carreras'] as $c) {
-            $o .= ' <a href="#carrera-' . $c['numero'] . '" title="' . $e($c['distancia'] . ' m · ' . ($c['tipo_prova'] ?? '') . ' · ' . $c['premio']) . '">' . $c['numero'] . 'º <small>' . ProgramaUy::hora($p['fecha'], $c['hora'], self::ZONA) . '</small></a>';
+            $o .= ' <a href="#carrera-' . $c['numero'] . '" title="' . $e($c['distancia'] . ' m · ' . Traduccion::tipo($c['tipo_prova']) . ' · ' . Traduccion::premio($c['premio'])) . '">' . $c['numero'] . 'ª <small>' . ProgramaUy::hora($p['fecha'], $c['hora'], self::ZONA) . '</small></a>';
         }
         $o .= '</div></nav>';
-        $o .= '<header><h1>' . $e($titulo) . '</h1><p>Horas de Brasília (la página las pasa a tu zona horaria). Programa del raceday del JCB leído el ' . $e($actualizado) . '. Velocidades en km/h. '
-            . '<b>Par</b>: promedio de los 4 primeros en pista macia para esa distancia, superficie y nivel (Grupo, Listed, Claiming por categoría, Índice Técnico, y en las comunes las victorias que permite la chamada). '
+        $o .= '<header><h1>' . $e($titulo) . '</h1><p>Horas de Brasília (la página las pasa a tu zona horaria). Programa del Jockey Club Brasileiro (JCB) leído el ' . $e($actualizado) . '. Velocidades en km/h. '
+            . '<b>Par</b>: promedio de los 4 primeros en pista blanda para esa distancia, superficie y nivel (Grupo, Listed, Claiming por categoría, Índice técnico, y en las comunes las victorias que permite la condición). '
             . 'El JCB publica solo el tiempo del ganador: el de los demás sale de los cuerpos al ganador. '
-            . '<b>Ajuste</b>: estado de la pista (leve, pesada, encharcada...) y si el páreo se pasó del césped a la arena ("variante"), medidos con los datos. '
+            . '<b>Ajuste</b>: estado de la pista (firme, blanda, pesada, anegada...) y si la carrera se pasó del césped a la arena, medidos con los datos. '
             . '<b>Índice</b>: velocidad corregida menos el par general de esa distancia (0 = normal), llevado a ' . $e(self::NOMBRES[$p['hipodromo']]) . '. '
             . '<b>Historia</b>: promedio de los índices de toda la campaña desde 2015, pesando más las últimas carreras. <b>Proyección</b>: (3 × historia + último + 2 × historia en la distancia) / 6. '
-            . '<b>vs par de hoy</b>: la proyección comparada con los 4 primeros normales del nivel de este páreo. '
+            . '<b>vs par de hoy</b>: la proyección comparada con los 4 primeros normales del nivel de esta carrera. '
             . '<b>Prob.</b>: probabilidad de ganar del mismo modelo que el de Uruguay, entrenado con las carreras de Brasil; el resumen se ordena por ella. '
-            . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy. <b>Rateio</b>: dividendo a ganador por R$ 1.</p></header>';
+            . '<b>Fecha en negrita</b>: en esa carrera también corrieron otros caballos de hoy. <b>Cuota</b>: dividendo a ganador por R$ 1. <b>Aprendiz</b>: Ap1 a Ap4, según la categoría (descarga kilos).</p></header>';
         foreach ($p['carreras'] as $c) {
             $o .= $this->htmlCarrera($c, $e);
         }
@@ -319,9 +319,9 @@ final class ProgramaNoOficial
 
     private function htmlCarrera(array $c, \Closure $e): string
     {
-        $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'º páreo · ' . ProgramaUy::hora($c['fecha'], $c['hora'], self::ZONA) . ' · ' . $e($c['distancia']) . ' m en ' . $e($c['superficie'])
-            . ($c['pista'] ? ' · ' . $e($c['pista']) : '') . '</h2>';
-        $o .= '<p class="premio"><b>' . $e($c['premio']) . '</b>' . ($c['tipo_prova'] ? '. ' . $e($c['tipo_prova']) : '') . '</p>';
+        $o = '<section class="carrera" id="carrera-' . $c['numero'] . '"><h2>' . $c['numero'] . 'ª carrera · ' . ProgramaUy::hora($c['fecha'], $c['hora'], self::ZONA) . ' · ' . $e($c['distancia']) . ' m en ' . $e($c['superficie'])
+            . ($c['pista'] ? ' · pista ' . $e(Traduccion::pista($c['pista'])) : '') . '</h2>';
+        $o .= '<p class="premio"><b>' . $e(Traduccion::premio($c['premio'])) . '</b>' . ($c['tipo_prova'] ? '. ' . $e(Traduccion::tipo($c['tipo_prova'])) : '') . '</p>';
         $o .= '<p class="par">Nivel: <b>' . $e($c['nivel']) . '</b>';
         if ($c['par']) {
             $o .= ' · Par: <b>' . self::num($c['par']['velocidad']) . '</b> (' . $e($c['par']['categoria']) . ', ' . $c['par']['carreras'] . ' carreras)';
@@ -335,7 +335,7 @@ final class ProgramaNoOficial
         $o .= '<table class="resumen"><thead><tr><th>Nº</th><th>Caballo</th><th>Kg</th><th>Últimas 6</th><th title="Índices de toda la campaña, pesando más las últimas carreras">Historia</th><th>Último</th>'
             . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
-            $notas = $h['retirado'] ? 'Forfait' : implode('. ', array_merge($h['notas'], $h['notas_hoy'] ?? []));
+            $notas = $h['retirado'] ? 'Retirado' : implode('. ', array_merge($h['notas'], $h['notas_hoy'] ?? []));
             $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'br')
                 . '</td><td>' . self::num($h['peso'], 1) . '</td><td>' . $e($h['ultimas6']) . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo'])
                 . '</td><td>' . self::idx($h['en_distancia']) . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">'
@@ -367,27 +367,27 @@ final class ProgramaNoOficial
     {
         $ped = $h['pedigri'];
         $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ProgramaUy::mandil((string)$h['numero']) . ' ' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'br')
-            . ' <small>' . $e(trim(($h['pelaje'] ?? '') . ' ' . mb_strtolower((string)$h['sexo']) . ' ' . ($h['edad'] ? $h['edad'] . ' años' : ''))) . '</small></h3>';
-        $o .= '<p>' . self::num($h['peso'], 1) . ' kg' . ($h['peso_texto'] && str_contains((string)$h['peso_texto'], '/') ? ' (' . $e($h['peso_texto']) . ')' : '') . ' · Jóquei: '
-            . ($h['retirado'] ? 'Forfait' : $this->persona('jockey', $h['jockey']) . ($h['aprendiz'] ? ' ' . $e($h['aprendiz']) : '') . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
-            . ' · Treinador: ' . $this->persona('cuidador', $h['cuidador'])
+            . ' <small>' . $e(trim(Traduccion::pelaje($h['pelaje']) . ' ' . Traduccion::sexo($h['sexo']) . ' ' . ($h['edad'] ? $h['edad'] . ' años' : ''))) . '</small></h3>';
+        $o .= '<p>' . self::num($h['peso'], 1) . ' kg' . ($h['peso_texto'] && str_contains((string)$h['peso_texto'], '/') ? ' (' . $e($h['peso_texto']) . ')' : '') . ' · Jockey: '
+            . ($h['retirado'] ? 'Retirado' : $this->persona('jockey', $h['jockey']) . ($h['aprendiz'] ? ' ' . $e($h['aprendiz']) : '') . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
+            . ' · Cuidador: ' . $this->persona('cuidador', $h['cuidador'])
             . ($h['peso_caballo'] ? ' · Peso del caballo: ' . $e($h['peso_caballo']) . ' kg' : '')
             . ' · ' . $e(($ped['padre'] ?? '') . ' y ' . ($ped['madre'] ?? '') . ($ped['abuelo_materno'] ? ' por ' . $ped['abuelo_materno'] : ''))
-            . ' · Proprietário: ' . $this->persona('stud', $h['stud']) . ($h['cuota'] !== null ? ' · Rateio: ' . self::num((float)$h['cuota'], 1) : '') . '</p>';
+            . ' · Propietario: ' . $this->persona('stud', $h['stud']) . ($h['cuota'] !== null ? ' · Cuota: ' . self::num((float)$h['cuota'], 1) : '') . '</p>';
         if (!$h['antecedentes']) {
-            return $o . '<p class="debut">' . ($h['estreante'] ? 'Estreante' : 'Sin carreras en la base') . '</p></div>';
+            return $o . '<p class="debut">' . ($h['estreante'] ? 'Debuta' : 'Sin carreras en la base') . '</p></div>';
         }
         $o .= '<table class="ant"><thead><tr><th>Fecha</th><th>Hip.</th><th>P.</th><th>Ganador</th><th>Segundo</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
             . '<th>Pista</th><th>T. ganador</th><th>Vel.</th><th>Ajuste</th><th>Vel. corr.</th><th>Índ. nivel</th><th>Índice</th>'
-            . '<th>Nivel</th><th>Jóquei</th><th>Kg</th><th>Nº</th><th>Rateio</th><th>Peso cab.</th></tr></thead><tbody>';
+            . '<th>Nivel</th><th>Jockey</th><th>Kg</th><th>Nº</th><th>Cuota</th><th>Peso cab.</th></tr></thead><tbody>';
         foreach (array_slice($h['antecedentes'], 0, self::ANTECEDENTES) as $a) {
             $fecha = date('d/m/y', strtotime($a['fecha']));
             if ($otros = array_diff($juntos[(int)$a['carrera_id']] ?? [], [$h['numero']])) {
                 $fecha = '<b>' . $fecha . '</b> <small>con ' . $e(implode(', ', $otros)) . '</small>';
             }
-            $o .= '<tr><td>' . $fecha . '</td><td>' . (self::SIGLAS[(int)$a['hipodromo_id']] ?? '') . '</td><td>' . $e($a['puesto_texto']) . '/' . $a['corredores']
-                . '</td><td>' . $e($a['primero']) . '</td><td>' . $e($a['segundo']) . '</td><td>' . $e($a['dist_acumulada']) . '</td><td>' . $e($a['distancia'])
-                . '</td><td>' . $e(mb_substr($a['superficie'], 0, 1)) . '</td><td>' . $e($a['pista']) . '</td><td>' . $e($a['tiempo_ganador'])
+            $o .= '<tr><td>' . $fecha . '</td><td>' . (self::SIGLAS[(int)$a['hipodromo_id']] ?? '') . '</td><td>' . $e($a['puesto'] !== null ? $a['puesto_texto'] : Traduccion::puesto($a['puesto_texto'])) . '/' . $a['corredores']
+                . '</td><td>' . $e($a['primero']) . '</td><td>' . $e($a['segundo']) . '</td><td>' . $e(Traduccion::distancia($a['dist_acumulada'])) . '</td><td>' . $e($a['distancia'])
+                . '</td><td>' . $e(mb_substr($a['superficie'], 0, 1)) . '</td><td>' . $e(Traduccion::pista($a['pista'])) . '</td><td>' . $e($a['tiempo_ganador'])
                 . '</td><td>' . self::num($a['velocidad']) . '</td><td>' . self::idx($a['ajuste']) . '</td><td>' . self::num($a['vel_corregida'])
                 . '</td><td>' . self::idx($a['idx_categoria']) . '</td><td class="fuerte">' . self::idx($a['indice']) . '</td><td class="cat">' . $e($a['nivel'])
                 . '</td><td>' . $e($a['jockey']) . '</td><td>' . self::num($a['peso_asignado'] !== null ? (float)$a['peso_asignado'] : null, 1) . '</td><td>' . $e($a['gatera'])
