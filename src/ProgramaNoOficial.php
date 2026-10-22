@@ -299,8 +299,10 @@ final class ProgramaNoOficial
             $f['superficie'] = $sup;
             $f['pista'] = $pista;
             $f['viento'] = $viento;
-            $f['primero'] = $podio[$f['carrera_id']][1] ?? null;
-            $f['segundo'] = $podio[$f['carrera_id']][2] ?? null;
+            $f['primero'] = $podio[$f['carrera_id']][1]['nombre'] ?? null;
+            $f['primero_peso'] = $podio[$f['carrera_id']][1]['peso'] ?? null;
+            $f['segundo'] = $podio[$f['carrera_id']][2]['nombre'] ?? null;
+            $f['segundo_peso'] = $podio[$f['carrera_id']][2]['peso'] ?? null;
             $f['velocidad'] = $f['tiempo_seg'] !== null ? Velocidades::kmh($dist, (float)$f['tiempo_seg']) : null;
             $f['cuarto_milla'] = $f['nivel'] === 'Cuarto de milla';
             $aj = $this->vel->ajuste($hip, $sup, $dist, $pista, $viento);
@@ -319,19 +321,19 @@ final class ProgramaNoOficial
         return $res;
     }
 
-    /** @return array<int, array<int, string>> carrera => puesto => nombre del caballo (1º y 2º) */
+    /** @return array<int, array<int, array{nombre: string, peso: ?string}>> carrera => puesto => caballo y kilos que cargó (1º y 2º) */
     private function podio(array $carreras): array
     {
         $carreras = array_values(array_unique(array_map('intval', $carreras)));
         $st = $this->db->prepare(sprintf(
-            'SELECT a.carrera_id, a.puesto, ca.nombre FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
+            'SELECT a.carrera_id, a.puesto, ca.nombre, a.peso_real AS peso FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
              WHERE a.carrera_id IN (%s) AND a.puesto IN (1, 2)',
             implode(',', array_fill(0, count($carreras), '?'))
         ));
         $st->execute($carreras);
         $res = [];
         foreach ($st as $r) {
-            $res[(int)$r['carrera_id']][(int)$r['puesto']] = $r['nombre'];
+            $res[(int)$r['carrera_id']][(int)$r['puesto']] = ['nombre' => $r['nombre'], 'peso' => $r['peso']];
         }
         return $res;
     }
@@ -617,7 +619,7 @@ final class ProgramaNoOficial
                 $fecha = '<b title="' . $e('Corrieron también: ' . $quienes) . '">' . $fecha . '</b> <small>con ' . $e(implode(', ', array_keys($a['con_rivales']))) . '</small>';
             }
             $o .= '<tr><td>' . $fecha . '</td><td>' . $e(self::siglaHipodromo((int)$a['hipodromo_id'])) . '</td><td>'
-                . $e($a['puesto'] ?? $a['puesto_texto']) . '/' . $a['corredores'] . '</td><td>' . $nom($a['primero'], $a['primero_rival']) . '</td><td>' . $nom($a['segundo'], $a['segundo_rival'])
+                . $e($a['puesto'] ?? $a['puesto_texto']) . '/' . $a['corredores'] . '</td><td>' . $nom($a['primero'], $a['primero_rival']) . self::kilosPodio($a['primero_peso']) . '</td><td>' . $nom($a['segundo'], $a['segundo_rival']) . self::kilosPodio($a['segundo_peso'])
                 . '</td><td>' . $e($a['dist_acumulada']) . '</td><td>' . $e($a['distancia']) . '</td><td>' . $e(mb_substr($a['superficie'], 0, 1)) . '</td><td>' . $e($a['pista'])
                 . '</td><td>' . $e($a['viento']) . '</td><td>' . $e($a['tiempo_ganador']) . '</td><td>' . $e($a['tiempo']) . '</td><td>' . self::num($a['velocidad'])
                 . '</td><td>' . self::idx($a['ajuste']) . '</td><td>' . self::num($a['vel_corregida']) . '</td><td>' . self::idx($a['idx_categoria']) . '</td><td class="fuerte">' . self::idx($a['indice'])
@@ -626,6 +628,16 @@ final class ProgramaNoOficial
                 . '</td><td>' . $e($a['tratamiento']) . '</td><td>' . $e($a['marca']) . '</td></tr>';
         }
         return $o . '</tbody></table></div>';
+    }
+
+    /** Kilos que cargó el ganador o el segundo de un antecedente, al lado del nombre: " (57)", " (56,5)". Lo usan todos los países. */
+    public static function kilosPodio(int|float|string|null $peso): string
+    {
+        if ($peso === null || (float)$peso <= 0) {
+            return '';
+        }
+        $p = (float)$peso;
+        return ' (' . number_format($p, fmod($p, 1) == 0 ? 0 : 1, ',', '.') . ')';
     }
 
     /** Número del caballo con los colores de su mandil ("1A" usa los del 1). Lo usan también Hong Kong y Brasil. */

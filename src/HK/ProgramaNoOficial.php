@@ -121,8 +121,10 @@ final class ProgramaNoOficial
             $riel = Velocidades::riel($f['recorrido']);
             $f['superficie'] = $sup;
             $f['nivel'] = Velocidades::nivel($f['clase']);
-            $f['primero'] = $podio[$f['carrera_id']][1] ?? null;
-            $f['segundo'] = $podio[$f['carrera_id']][2] ?? null;
+            $f['primero'] = $podio[$f['carrera_id']][1]['nombre'] ?? null;
+            $f['primero_peso'] = $podio[$f['carrera_id']][1]['peso'] ?? null;
+            $f['segundo'] = $podio[$f['carrera_id']][2]['nombre'] ?? null;
+            $f['segundo_peso'] = $podio[$f['carrera_id']][2]['peso'] ?? null;
             $f['velocidad'] = Velocidades::kmh($dist, $f['tiempo_seg'] !== null ? (float)$f['tiempo_seg'] : null);
             $aj = $this->vel->ajuste($hip, $sup, $dist, $pista, $riel);
             $f['ajuste'] = $aj;
@@ -137,15 +139,15 @@ final class ProgramaNoOficial
         return $filas;
     }
 
-    /** @return array<int, array<int, string>> carrera => puesto => caballo (1º y 2º) */
+    /** @return array<int, array<int, array{nombre: string, peso: ?string}>> carrera => puesto => caballo y kilos que cargó (1º y 2º) */
     private function podio(array $carreras): array
     {
         $carreras = array_values(array_unique(array_map('intval', $carreras)));
-        $st = $this->db->query('SELECT a.carrera_id, a.puesto, ca.nombre FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
+        $st = $this->db->query('SELECT a.carrera_id, a.puesto, ca.nombre, a.peso_asignado AS peso FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
             WHERE a.carrera_id IN (' . implode(',', $carreras) . ') AND a.puesto IN (1, 2)');
         $res = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $res[(int)$r['carrera_id']][(int)$r['puesto']] ??= $r['nombre'];
+            $res[(int)$r['carrera_id']][(int)$r['puesto']] ??= ['nombre' => $r['nombre'], 'peso' => $r['peso']];
         }
         return $res;
     }
@@ -399,7 +401,7 @@ final class ProgramaNoOficial
                 $fecha = '<b>' . $fecha . '</b> <small>con ' . $e(implode(', ', $otros)) . '</small>';
             }
             $o .= '<tr><td>' . $fecha . '</td><td>' . self::SIGLAS[(int)$a['hipodromo_id']] . '</td><td>' . $e($a['puesto_texto']) . '/' . $a['corredores']
-                . '</td><td>' . $e($a['primero']) . '</td><td>' . $e($a['segundo']) . '</td><td>' . $e($a['dist_acumulada']) . '</td><td>' . $e($a['distancia'])
+                . '</td><td>' . $e($a['primero']) . ProgramaUy::kilosPodio($a['primero_peso']) . '</td><td>' . $e($a['segundo']) . ProgramaUy::kilosPodio($a['segundo_peso']) . '</td><td>' . $e($a['dist_acumulada']) . '</td><td>' . $e($a['distancia'])
                 . '</td><td>' . ($a['superficie'] === 'césped' ? 'c' : 's') . '</td><td>' . $e($a['pista']) . '</td><td>' . $e($a['recorrido'])
                 . '</td><td>' . $e($a['tiempo_ganador']) . '</td><td>' . $e($a['tiempo']) . '</td><td>' . self::num($a['velocidad'])
                 . '</td><td>' . self::idx($a['ajuste']) . '</td><td>' . self::num($a['vel_corregida']) . '</td><td>' . self::idx($a['idx_categoria'])
