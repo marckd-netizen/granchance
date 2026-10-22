@@ -466,5 +466,10 @@ Qué cambia respecto de Uruguay:
   Maiden y Newcomer, separado por edad (2 años, 3 años, 3 y más, 4 y más), con los 4 primeros en pista Firm o Standard.
   El sitio en inglés dice "Allowance" sin decir cuántas victorias: se saca del premio al ganador comparado con el de 1 victoria de ese año.
 - **Ajustes**: el going y, en césped, la **semana** de la reunión (el pasto se gasta con los días: semana 1 a 6).
-- **Equivalencias**, con los caballos que corrieron en más de un hipódromo (Tokyo = 0).
 - **Modelo**: las mismas variables. El mercado sale de la cuota final a ganador; "sprint" es hasta 1000 m y "fondo" 2200 m o más.
+- **Equivalencias** con Tokyo = 0: Kyoto -0,02 km/h, Niigata +0,02, Chukyo +0,03, Hanshin +0,03, Sapporo +0,09, Fukushima +0,12,
+  Hakodate +0,15, Nakayama +0,18, Kokura +0,19.
+- Entrenado con 2016 a octubre de 2024 y medido con las 6.940 carreras de octubre de 2024 a octubre de 2026: el de más
+  probabilidad gana el **28,0 %** (la proyección sola, 22,6 %; el favorito de las cuotas, 33,5 %). Trifecta sin orden con sus 3
+  primeros, 7,3 %; exacta sin orden, 26,1 %. Bien calibrado hasta ~35 %; a los de 44 % les da de más (ganan 38 %).
+- Rankings: `/ranking/caballos?pais=japon` (y los demás), con premios en yenes. Fichas: `/jp/caballo/…`, `/jp/jockey/…`...
