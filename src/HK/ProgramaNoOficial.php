@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace GranChance\HK;
 
 use GranChance\{Clasificador, Modelo as ModeloUy, ProgramaNoOficial as ProgramaUy};
+use GranChance\Fichas;
 use PDO;
 
 /**
@@ -345,7 +346,7 @@ final class ProgramaNoOficial
             . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $notas = $h['retirado'] ? 'Retirado' : implode('. ', array_merge($h['notas'], $h['notas_hoy'] ?? []));
-            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . $e($h['nombre'])
+            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'hk')
                 . '</td><td>' . self::num($h['peso'], 1) . '</td><td>' . $e($h['gatera']) . '</td><td>' . $e($h['rating']) . '</td><td>' . $e($h['ultimas6'])
                 . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo']) . '</td><td>' . self::idx($h['en_distancia'])
                 . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">'
@@ -359,16 +360,30 @@ final class ProgramaNoOficial
         return $o . '</section>';
     }
 
+    private ?\PDOStatement $stPersona = null;
+
+    /** El nombre de un jockey, o cuidador del programa con el enlace a su ficha (si figura en la base). */
+    private function persona(string $tipo, ?string $nombre): string
+    {
+        $id = null;
+        if ((string)$nombre !== '') {
+            $this->stPersona ??= $this->db->prepare('SELECT id FROM persona WHERE tipo = ? AND nombre = ? LIMIT 1');
+            $this->stPersona->execute([$tipo, $nombre]);
+            $id = $this->stPersona->fetchColumn() ?: null;
+        }
+        return Fichas::enlazar($tipo, $id ? (int)$id : null, $nombre, 'hk');
+    }
+
     private function htmlCaballo(array $h, array $juntos, \Closure $e): string
     {
         $ped = $h['pedigri'];
         $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>'
             . ($h['marca'] ? '<img class="chaquetilla" loading="lazy" alt="" width="38" height="38" src="' . $e(sprintf(self::CHAQUETILLA, $h['marca'])) . '"> ' : '')
-            . ProgramaUy::mandil((string)$h['numero']) . ' ' . $e($h['nombre']) . ($ped['pais'] ? ' (' . $e($ped['pais']) . ')' : '')
+            . ProgramaUy::mandil((string)$h['numero']) . ' ' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'hk') . ($ped['pais'] ? ' (' . $e($ped['pais']) . ')' : '')
             . ' <small>' . $e(trim(($ped['pelaje'] ?? '') . ' ' . ($ped['sexo'] ?? '') . ' ' . ($h['edad'] ? $h['edad'] . ' años' : ''))) . ' · ' . $e($h['marca']) . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg (' . $e($h['peso_lb']) . ' lb' . ($h['descargo'] ? ' ' . $h['descargo'] : '') . ') · Jockey: '
-            . ($h['retirado'] ? 'Retirado' : $e($h['jockey']) . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
-            . ' · Cuidador: ' . $e($h['cuidador']) . ' · Gatera: ' . $e($h['gatera']) . ' · Rating: ' . $e($h['rating'])
+            . ($h['retirado'] ? 'Retirado' : $this->persona('jockey', $h['jockey']) . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
+            . ' · Cuidador: ' . $this->persona('cuidador', $h['cuidador']) . ' · Gatera: ' . $e($h['gatera']) . ' · Rating: ' . $e($h['rating'])
             . ($h['peso_caballo_lb'] ? ' · Peso del caballo: ' . $e($h['peso_caballo_lb']) . ' lb' : '')
             . ($h['equipo'] ? ' · Equipo: ' . $e($h['equipo']) : '') . ' · ' . $e($ped['padre'] . ' y ' . $ped['madre'] . ($ped['abuelo_materno'] ? ' por ' . $ped['abuelo_materno'] : ''))
             . ($h['importacion'] ? ' · ' . $e($h['importacion']) : '') . ' · Propietario: ' . $e($h['propietario']) . '</p>';

@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS caballo (
   criador_id      INT UNSIGNED NULL,
   ficha_en        DATETIME NULL,                  -- cuándo se leyó la ficha del ejemplar
   UNIQUE KEY (sb_id),
-  KEY (nombre)
+  KEY (nombre),
+  KEY (criador_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Jockeys, entrenadores (cuidador, como en Uruguay), caballerizas (stud) y criadores, por su id en el Stud Book.

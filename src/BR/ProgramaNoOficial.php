@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace GranChance\BR;
 
 use GranChance\{Modelo as ModeloUy, ProgramaNoOficial as ProgramaUy};
+use GranChance\Fichas;
 use PDO;
 
 /**
@@ -335,7 +336,7 @@ final class ProgramaNoOficial
             . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $notas = $h['retirado'] ? 'Forfait' : implode('. ', array_merge($h['notas'], $h['notas_hoy'] ?? []));
-            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . $e($h['nombre'])
+            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'br')
                 . '</td><td>' . self::num($h['peso'], 1) . '</td><td>' . $e($h['ultimas6']) . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo'])
                 . '</td><td>' . self::idx($h['en_distancia']) . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">'
                 . ($h['prob'] !== null ? self::num(100 * $h['prob'], 0) . ' %' : '') . '</td><td>' . $e($h['dias']) . '</td><td>' . $e($notas) . '</td></tr>';
@@ -348,17 +349,31 @@ final class ProgramaNoOficial
         return $o . '</section>';
     }
 
+    private ?\PDOStatement $stPersona = null;
+
+    /** El nombre de un jockey, cuidador o stud del programa con el enlace a su ficha (si figura en la base). */
+    private function persona(string $tipo, ?string $nombre): string
+    {
+        $id = null;
+        if ((string)$nombre !== '') {
+            $this->stPersona ??= $this->db->prepare('SELECT id FROM persona WHERE tipo = ? AND nombre = ? LIMIT 1');
+            $this->stPersona->execute([$tipo, $nombre]);
+            $id = $this->stPersona->fetchColumn() ?: null;
+        }
+        return Fichas::enlazar($tipo, $id ? (int)$id : null, $nombre, 'br');
+    }
+
     private function htmlCaballo(array $h, array $juntos, \Closure $e): string
     {
         $ped = $h['pedigri'];
-        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ProgramaUy::mandil((string)$h['numero']) . ' ' . $e($h['nombre'])
+        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ProgramaUy::mandil((string)$h['numero']) . ' ' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'br')
             . ' <small>' . $e(trim(($h['pelaje'] ?? '') . ' ' . mb_strtolower((string)$h['sexo']) . ' ' . ($h['edad'] ? $h['edad'] . ' años' : ''))) . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg' . ($h['peso_texto'] && str_contains((string)$h['peso_texto'], '/') ? ' (' . $e($h['peso_texto']) . ')' : '') . ' · Jóquei: '
-            . ($h['retirado'] ? 'Forfait' : $e($h['jockey']) . ($h['aprendiz'] ? ' ' . $e($h['aprendiz']) : '') . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
-            . ' · Treinador: ' . $e($h['cuidador'])
+            . ($h['retirado'] ? 'Forfait' : $this->persona('jockey', $h['jockey']) . ($h['aprendiz'] ? ' ' . $e($h['aprendiz']) : '') . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
+            . ' · Treinador: ' . $this->persona('cuidador', $h['cuidador'])
             . ($h['peso_caballo'] ? ' · Peso del caballo: ' . $e($h['peso_caballo']) . ' kg' : '')
             . ' · ' . $e(($ped['padre'] ?? '') . ' y ' . ($ped['madre'] ?? '') . ($ped['abuelo_materno'] ? ' por ' . $ped['abuelo_materno'] : ''))
-            . ' · Proprietário: ' . $e($h['stud']) . ($h['cuota'] !== null ? ' · Rateio: ' . self::num((float)$h['cuota'], 1) : '') . '</p>';
+            . ' · Proprietário: ' . $this->persona('stud', $h['stud']) . ($h['cuota'] !== null ? ' · Rateio: ' . self::num((float)$h['cuota'], 1) : '') . '</p>';
         if (!$h['antecedentes']) {
             return $o . '<p class="debut">' . ($h['estreante'] ? 'Estreante' : 'Sin carreras en la base') . '</p></div>';
         }

@@ -9,9 +9,9 @@ use PDO;
  * Rankings de la web (/ranking/caballos, /ranking/jockeys, ...): los mejores según premios, ganadas, % de ganadas,
  * % entre los 3 primeros o velocidad promedio, con filtros por año y mes, distancias, hipódromos, superficie y estado
  * de la pista (y sexo y pelaje para caballos y potrillos). Se arman al pedirlos, leyendo la base. Con ?pais=hong-kong leen
- * la base de Hong Kong (config 'hk'), que no tiene studs ni criadores ni año de nacimiento, ni fichas a las que enlazar;
- * con ?pais=brasil, la de Brasil (config 'br'), que tiene todo menos los premios (el JCB no publica la bolsa) y las fichas;
- * con ?pais=argentina, la de Argentina (config 'ar'), que tiene todo menos las fichas.
+ * la base de Hong Kong (config 'hk'), que no tiene studs ni criadores ni año de nacimiento;
+ * con ?pais=brasil, la de Brasil (config 'br'), que tiene todo menos los premios (el JCB no publica la bolsa);
+ * con ?pais=argentina, la de Argentina (config 'ar'). Enlazan a las fichas de cada país (/ar/caballo/...).
  */
 final class Rankings
 {
@@ -46,6 +46,8 @@ final class Rankings
         'at' => 'Alazán tostado', 'zn' => 'Zaino negro'];
     private const ESTADOS_AR = ['normal', 'húmeda', 'pesada', 'fangosa'];
     private const PAISES = ['hong-kong' => 'Hong Kong', 'brasil' => 'Brasil', 'argentina' => 'Argentina'];
+    /** ?pais= => país de las fichas (Fichas::PAISES). */
+    private const FICHAS = ['hong-kong' => 'hk', 'brasil' => 'br', 'argentina' => 'ar'];
 
     /** true mientras se arma un ranking de Hong Kong ($this->db es entonces la base de Hong Kong). */
     private bool $hk = false;
@@ -119,7 +121,6 @@ final class Rankings
             return null;
         }
         [$titulo, $grupo, $ficha] = self::TIPOS[$de];
-        $ficha = $this->pais() ? null : $ficha;
         $f = $this->filtros($de, $q);
         [$where, $args] = $this->where($de, $f);
 
@@ -334,7 +335,7 @@ final class Rankings
         $o .= '</tr></thead><tbody>';
         foreach ($filas as $i => $r) {
             $nombre = $e($r['nombre']);
-            $nombre = $ficha ? '<a href="' . $e(Fichas::url($ficha, (int)$r['clave'], (string)$r['nombre'])) . '">' . $nombre . '</a>'
+            $nombre = $ficha ? '<a href="' . $e(Fichas::url($ficha, (int)$r['clave'], (string)$r['nombre'], self::FICHAS[$this->pais()] ?? null)) . '">' . $nombre . '</a>'
                 : ($this->pais() ? $nombre : '<a href="/buscar?q=' . rawurlencode((string)$r['nombre']) . '">' . $nombre . '</a>');
             $o .= '<tr><td class="num">' . ($i + 1) . '</td><td>' . $nombre . (!empty($r['pais']) && $r['pais'] !== ($this->ar ? 'ARG' : 'URU') && !str_ends_with((string)$r['nombre'], ')') ? ' <small>(' . $e($r['pais']) . ')</small>' : '') . '</td>';
             if (in_array($de, ['caballos', 'potrillos'], true)) {

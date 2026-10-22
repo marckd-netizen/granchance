@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace GranChance\AR;
 
 use GranChance\{Modelo as ModeloUy, ProgramaNoOficial as ProgramaUy};
+use GranChance\Fichas;
 use PDO;
 
 /**
@@ -87,7 +88,8 @@ final class ProgramaNoOficial
                 'gatera' => $a['gatera'], 'jockey' => $retirado ? null : ($a['jockey']['nombre'] ?? null),
                 'jockey_codigo' => $retirado ? null : ($a['jockey']['codigo'] ?? null),
                 'cuidador' => $a['cuidador']['nombre'] ?? null, 'cuidador_codigo' => $a['cuidador']['codigo'] ?? null,
-                'stud' => $a['stud']['nombre'] ?? null, 'criador' => $a['criador']['nombre'] ?? null, 'peso_caballo' => null,
+                'stud' => $a['stud']['nombre'] ?? null, 'stud_codigo' => $a['stud']['codigo'] ?? null,
+                'criador' => $a['criador']['nombre'] ?? null, 'criador_codigo' => $a['criador']['codigo'] ?? null, 'peso_caballo' => null,
                 'pedigri' => ['padre' => $a['padre_nombre'], 'madre' => $a['madre_nombre'], 'abuelo_materno' => null],
             ];
         }
@@ -346,7 +348,7 @@ final class ProgramaNoOficial
             . '<th>En la dist.</th><th>Proyección</th><th>vs par de hoy</th><th>Prob.</th><th>Días</th><th>Notas</th></tr></thead><tbody>';
         foreach ($orden as $h) {
             $notas = $h['retirado'] ? 'Retirado' : implode('. ', array_merge($h['notas'], $h['notas_hoy'] ?? []));
-            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . $e($h['nombre'])
+            $o .= '<tr' . ($h['retirado'] ? ' class="retirado"' : '') . '><td>' . ProgramaUy::mandil((string)$h['numero']) . '</td><td>' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'ar')
                 . '</td><td>' . self::num($h['peso'], 1) . '</td><td>' . $e($h['ultimas6']) . '</td><td>' . self::idx($h['promedio']) . '</td><td>' . self::idx($h['ultimo'])
                 . '</td><td>' . self::idx($h['en_distancia']) . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">'
                 . ($h['prob'] !== null ? self::num(100 * $h['prob'], 0) . ' %' : '') . '</td><td>' . $e($h['dias']) . '</td><td>' . $e($notas) . '</td></tr>';
@@ -359,17 +361,31 @@ final class ProgramaNoOficial
         return $o . '</section>';
     }
 
+    private ?\PDOStatement $stPersona = null;
+
+    /** El nombre de un jockey, entrenador, caballeriza o criador del programa con el enlace a su ficha (por su código del Stud Book). */
+    private function persona(string $tipo, ?string $codigo, ?string $nombre): string
+    {
+        $id = null;
+        if ((string)$codigo !== '') {
+            $this->stPersona ??= $this->db->prepare('SELECT id FROM persona WHERE tipo = ? AND codigo = ?');
+            $this->stPersona->execute([$tipo, $codigo]);
+            $id = $this->stPersona->fetchColumn() ?: null;
+        }
+        return Fichas::enlazar($tipo, $id ? (int)$id : null, $nombre, 'ar');
+    }
+
     private function htmlCaballo(array $h, array $juntos, \Closure $e): string
     {
         $ped = $h['pedigri'];
-        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ProgramaUy::mandil((string)$h['numero']) . ' ' . $e($h['nombre'])
+        $o = '<div class="caballo' . ($h['retirado'] ? ' retirado' : '') . '"><h3>' . ProgramaUy::mandil((string)$h['numero']) . ' ' . Fichas::enlazar('caballo', $h['caballo_id'] ?? null, $h['nombre'], 'ar')
             . ' <small>' . $e(trim(($h['pelaje'] ?? '') . ' ' . mb_strtolower((string)$h['sexo']) . ' ' . ($h['edad'] ? $h['edad'] . ' años' : ''))) . '</small></h3>';
         $o .= '<p>' . self::num($h['peso'], 1) . ' kg' . ($h['descargo'] ? ' (' . self::num((float)$h['peso_asignado'], 1) . ' − ' . self::num((float)$h['descargo'], 1) . ')' : '') . ' · Jockey: '
-            . ($h['retirado'] ? 'Retirado' : $e($h['jockey']) . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
-            . ' · Entrenador: ' . $e($h['cuidador'])
+            . ($h['retirado'] ? 'Retirado' : $this->persona('jockey', $h['jockey_codigo'], $h['jockey']) . (($h['cambio_jockey'] ?? false) ? ' <span class="cambio">(cambió)</span>' : ''))
+            . ' · Entrenador: ' . $this->persona('cuidador', $h['cuidador_codigo'], $h['cuidador'])
             . ($h['peso_caballo'] ? ' · Peso del caballo: ' . $e($h['peso_caballo']) . ' kg' : '')
             . ' · ' . $e(($ped['padre'] ?? '') . ' y ' . ($ped['madre'] ?? '') . ($ped['abuelo_materno'] ? ' por ' . $ped['abuelo_materno'] : ''))
-            . ' · Caballeriza: ' . $e($h['stud']) . ($h['criador'] ? ' · Criador: ' . $e($h['criador']) : '') . '</p>';
+            . ' · Caballeriza: ' . $this->persona('stud', $h['stud_codigo'], $h['stud']) . ($h['criador'] ? ' · Criador: ' . $this->persona('criador', $h['criador_codigo'], $h['criador']) : '') . '</p>';
         if (!$h['antecedentes']) {
             return $o . '<p class="debut">' . ($h['estreante'] ? 'Debutante' : 'Sin carreras en la base') . '</p></div>';
         }

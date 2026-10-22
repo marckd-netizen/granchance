@@ -8,7 +8,8 @@ use PDO;
 /**
  * Fichas de la web (public/ficha.php): una página por caballo, jockey y cuidador con todas sus carreras (las corridas y
  * las inscripciones de los programas publicados), los premios cobrados, una tabla de puestos por año y otra por distancia.
- * También el buscador. Se arman al pedirlas, leyendo la base.
+ * También el buscador. Se arman al pedirlas, leyendo la base. Con $pais ('hk', 'br', 'ar') leen la base de ese país
+ * (/ar/caballo/123-nombre...): sin inscripciones (las próximas carreras salen solo en Uruguay), y en Hong Kong sin studs ni criadores.
  */
 final class Fichas
 {
@@ -20,11 +21,27 @@ final class Fichas
     private const REPARTO = [1 => 0.548, 2 => 0.202, 3 => 0.135, 4 => 0.077, 5 => 0.038];
     /** Jockeys y cuidadores: sin ?todas=1, la lista de carreras muestra el último año. */
     private const DIAS_LISTA = 365;
+    /** Otros países: código => [nombre, número que se suma al id del hipódromo en la web, país de los caballos nacidos ahí]. */
+    public const PAISES = ['ar' => ['Argentina', 200, 'ARG'], 'br' => ['Brasil', 300, null], 'hk' => ['Hong Kong', 100, null]];
+    /** Reparto habitual de la bolsa del HKJC del 1º al 5º. */
+    private const REPARTO_HK = [1 => .57, .22, .115, .06, .035];
 
-    /** @param string $carpeta carpeta pública (para saber qué programas y resultados están publicados) */
-    public function __construct(private PDO $db, private string $carpeta)
+    /**
+     * @param string $carpeta carpeta pública (para saber qué programas y resultados están publicados)
+     * @param ?string $pais null para Uruguay, o una clave de PAISES si $db es la base de ese país
+     */
+    public function __construct(private PDO $db, private string $carpeta, private ?string $pais = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        if ($pais !== null && !isset(self::PAISES[$pais])) {
+            throw new \InvalidArgumentException("País desconocido: $pais");
+        }
+    }
+
+    /** Las fichas que hay en este país: Hong Kong no publica studs ni criadores. */
+    public function tipos(): array
+    {
+        return $this->pais === 'hk' ? array_diff_key(self::TIPOS, ['stud' => 1, 'criador' => 1]) : self::TIPOS;
     }
 
     public static function slug(string $nombre): string
@@ -32,9 +49,55 @@ final class Fichas
         return trim(preg_replace('/[^a-z0-9]+/', '-', Personas::clave($nombre)), '-');
     }
 
-    public static function url(string $tipo, int $id, string $nombre): string
+    public static function url(string $tipo, int $id, string $nombre, ?string $pais = null): string
     {
-        return "/$tipo/$id-" . self::slug($nombre);
+        return ($pais ? "/$pais" : '') . "/$tipo/$id-" . self::slug($nombre);
+    }
+
+    /**
+     * Lo que cobró el caballo en Argentina: el Stud Book detalla el premio de cada puesto ("1º $ 1,987,443 | 2º $ 473,214 | ...").
+     * [pesos, dólares] (los dólares con el cambio que usa el Stud Book para la bolsa), o null.
+     */
+    public static function premioAr(?string $bolsa, ?string $dolares, ?string $detalle, ?int $puesto): ?array
+    {
+        if (!$puesto || $puesto > 5 || !preg_match('/(?:^|\|)\s*' . $puesto . '\D{1,3}\$\s*([\d.,]+)/u', (string)$detalle, $m)) {
+            return null;
+        }
+        $pesos = (int)preg_replace('/\D/', '', $m[1]);
+        return [$pesos, (float)$bolsa > 0 ? $pesos * (float)$dolares / (float)$bolsa : 0.0];
+    }
+
+    /** Premio cobrado según el país: [moneda, monto] o null. */
+    private function cobrado(array $a): ?array
+    {
+        return match ($this->pais) {
+            'ar' => ($p = self::premioAr($a['bolsa'], $a['bolsa_dolares'], $a['bolsa_detalle'], $a['puesto'])) ? ['$', $p[0]] : null,
+            'br' => null,
+            'hk' => $a['puesto'] && $a['puesto'] <= 5 && (float)$a['bolsa'] > 0 ? ['HK$', (int)round((float)$a['bolsa'] * self::REPARTO_HK[$a['puesto']])] : null,
+            default => self::premio($a['bolsa'], $a['bolsa_detalle'], $a['puesto']),
+        };
+    }
+
+    /** Nombre del hipódromo (id de la base de este país). */
+    private function hipodromo(int $id): string
+    {
+        if ($this->pais === null) {
+            return ProgramaNoOficial::nombreHipodromo($id);
+        }
+        if (!isset($this->hipodromos)) {
+            $this->hipodromos = $this->db->query('SELECT id, nombre FROM hipodromo')->fetchAll(PDO::FETCH_KEY_PAIR);
+        }
+        $web = ProgramaNoOficial::nombreHipodromo($this->web($id));
+        return str_starts_with($web, 'Hipódromo ') ? (string)($this->hipodromos[$id] ?? $web) : $web;
+    }
+
+    /** @var array<int,string> */
+    private array $hipodromos;
+
+    /** El número del hipódromo en la web (programas/FECHA_NNN.html). */
+    private function web(int $id): int
+    {
+        return $id + ($this->pais ? self::PAISES[$this->pais][1] : 0);
     }
 
     /**
@@ -67,7 +130,7 @@ final class Fichas
             $st->execute([$id]);
             $ficha = $st->fetch(PDO::FETCH_ASSOC);
             $todas = true;
-        } elseif (isset(self::TIPOS[$tipo])) {
+        } elseif (isset($this->tipos()[$tipo])) {
             $st = $this->db->prepare('SELECT * FROM persona WHERE id = ? AND tipo = ?');
             $st->execute([$id, $tipo]);
             $ficha = $st->fetch(PDO::FETCH_ASSOC);
@@ -78,25 +141,34 @@ final class Fichas
             return null;
         }
         $col = ['caballo' => 'a.caballo_id', 'jockey' => 'a.jockey_id', 'cuidador' => 'a.cuidador_id', 'stud' => 'a.stud_id', 'criador' => 'ca.criador_id'][$tipo];
+        // Las columnas que cambian de un país a otro: el dividendo a ganador, los studs (no en Hong Kong) y los que no largaron
+        // (en Argentina y Brasil figuran como retirados; en Hong Kong, con puesto WV, WX...).
+        $hk = $this->pais === 'hk';
+        $sport = in_array($this->pais, ['hk', 'br'], true) ? 'cuota' : 'sport';
+        $largo = fn (string $t) => match ($this->pais) {
+            'ar', 'br' => " AND $t.retiro_motivo IS NULL",
+            'hk' => " AND ($t.puesto_texto IS NULL OR $t.puesto_texto NOT LIKE 'W%')",
+            default => '',
+        };
         $st = $this->db->prepare("SELECT r.fecha, r.hipodromo_id, c.id AS carrera_id, c.numero, c.premio AS nombre_carrera, c.distancia, c.superficie, c.pista,
-                c.bolsa, c.bolsa_detalle, a.puesto, a.puesto_texto, a.peso_asignado, a.sport, a.tiempo,
+                c.bolsa, c.bolsa_detalle" . ($this->pais === 'ar' ? ', c.bolsa_dolares' : '') . ", a.puesto, a.puesto_texto, a.peso_asignado, a.$sport AS sport, a.tiempo,
                 ca.id AS caballo_id, ca.nombre AS caballo, j.id AS jockey_id, j.nombre AS jockey, cu.id AS cuidador_id, cu.nombre AS cuidador,
-                s.id AS stud_id, s.nombre AS stud, (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = c.id) AS corredores
+                " . ($hk ? 'NULL AS stud_id, NULL AS stud' : 's.id AS stud_id, s.nombre AS stud') . ", (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = c.id" . $largo('x') . ") AS corredores
             FROM actuacion a JOIN carrera c ON c.id = a.carrera_id JOIN reunion r ON r.id = c.reunion_id JOIN caballo ca ON ca.id = a.caballo_id
-            LEFT JOIN persona j ON j.id = a.jockey_id LEFT JOIN persona cu ON cu.id = a.cuidador_id LEFT JOIN persona s ON s.id = a.stud_id
-            WHERE $col = ? ORDER BY r.fecha DESC, c.numero DESC");
+            LEFT JOIN persona j ON j.id = a.jockey_id LEFT JOIN persona cu ON cu.id = a.cuidador_id " . ($hk ? '' : 'LEFT JOIN persona s ON s.id = a.stud_id') . "
+            WHERE $col = ?" . $largo('a') . " ORDER BY r.fecha DESC, c.numero DESC");
         $st->execute([$id]);
         $corridas = $st->fetchAll(PDO::FETCH_ASSOC);
         foreach ($corridas as &$a) {
             $a['puesto'] = $a['puesto'] !== null ? (int)$a['puesto'] : null;
-            $a['cobrado'] = self::premio($a['bolsa'], $a['bolsa_detalle'], $a['puesto']);
+            $a['cobrado'] = $this->cobrado($a);
         }
         unset($a);
-        $proximas = $this->proximas($tipo, $id);
+        $proximas = $this->pais ? [] : $this->proximas($tipo, $id);
         // Filtro por hipódromo (?h=maronas), como en la portada.
         $hips = [];
         foreach (array_merge(array_column($corridas, 'hipodromo_id'), array_column($proximas, 'hipodromo_id')) as $h) {
-            $hips[(int)$h] = ProgramaNoOficial::nombreHipodromo((int)$h);
+            $hips[(int)$h] = $this->hipodromo((int)$h);
         }
         asort($hips);
         $filtro = $hipodromo !== null ? array_search($hipodromo, array_map([self::class, 'slug'], $hips), true) : false;
@@ -104,20 +176,23 @@ final class Fichas
             $corridas = array_values(array_filter($corridas, fn ($a) => (int)$a['hipodromo_id'] === $filtro));
             $proximas = array_values(array_filter($proximas, fn ($a) => (int)$a['hipodromo_id'] === $filtro));
         }
-        $titulo = $tipo === 'caballo' ? $ficha['nombre'] . ($ficha['pais'] !== 'URU' ? " ({$ficha['pais']})" : '') : $ficha['nombre'];
+        $local = $this->pais ? self::PAISES[$this->pais][2] : 'URU';
+        $titulo = $tipo === 'caballo' && $ficha['pais'] && $ficha['pais'] !== $local && !str_ends_with($ficha['nombre'], ')') ? "{$ficha['nombre']} ({$ficha['pais']})" : $ficha['nombre'];
 
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
-        $o = '<h1>' . $e($titulo) . ' <small>' . self::TIPOS[$tipo] . '</small></h1>';
+        $o = '<h1>' . $e($titulo) . ' <small>' . self::TIPOS[$tipo] . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : '') . '</small></h1>';
         if ($tipo === 'caballo') {
-            $o .= '<p>' . $e(trim(self::pelaje($ficha['pelaje']) . ' ' . ($ficha['sexo'] === 'h' ? 'hembra' : ($ficha['sexo'] === 'm' ? 'macho' : '')))) . ', nacido en ' . (int)$ficha['anio_nac']
+            $sexo = ['h' => 'hembra', 'm' => 'macho', 'c' => 'castrado'][strtolower((string)$ficha['sexo'])] ?? mb_strtolower((string)$ficha['sexo']);
+            $o .= '<p>' . $e(trim(self::pelaje($ficha['pelaje']) . ' ' . $sexo)) . ($ficha['anio_nac'] ? ', nacido en ' . (int)$ficha['anio_nac'] : '')
+                . ($ficha['fecha_nac'] ?? null ? ' (' . date('d/m/Y', strtotime($ficha['fecha_nac'])) . ')' : '')
                 . ($ficha['padre'] ? ' · Por ' . $e($ficha['padre']) : '') . ($ficha['madre'] ? ' y ' . $e($ficha['madre']) : '')
                 . ($ficha['abuelo_materno'] ? ' (' . $e($ficha['abuelo_materno']) . ')' : '');
             if ($corridas) {
                 $u = $corridas[0];
                 $o .= ' · Último jockey: ' . $this->enlace('jockey', $u['jockey_id'], $u['jockey']) . ' · Cuidador: ' . $this->enlace('cuidador', $u['cuidador_id'], $u['cuidador'])
-                    . ' · Stud: ' . $this->chaquetilla($u['stud']) . $this->enlace('stud', $u['stud_id'], $u['stud']);
+                    . ($hk ? '' : ' · Stud: ' . $this->chaquetilla($u['stud']) . $this->enlace('stud', $u['stud_id'], $u['stud']));
             }
-            if ($ficha['criador_id']) {
+            if ($ficha['criador_id'] ?? null) {
                 $st = $this->db->prepare('SELECT nombre FROM persona WHERE id = ?');
                 $st->execute([$ficha['criador_id']]);
                 $o .= ' · Criador: ' . $this->enlace('criador', $ficha['criador_id'], (string)$st->fetchColumn());
@@ -133,16 +208,19 @@ final class Fichas
             }
             $o .= '</div>';
         }
-        $o .= self::resumen($corridas);
-        $o .= '<h2>Próximas carreras</h2>' . ($proximas ? $this->tablaProximas($proximas, $tipo)
-            : '<p class="nota">No figura en los programas publicados (salen hasta 15 días antes de cada reunión).</p>');
+        $premios = $this->pais !== 'br';      // el JCB no publica la bolsa
+        $o .= self::resumen($corridas, $premios);
+        if (!$this->pais) {
+            $o .= '<h2>Próximas carreras</h2>' . ($proximas ? $this->tablaProximas($proximas, $tipo)
+                : '<p class="nota">No figura en los programas publicados (salen hasta 15 días antes de cada reunión).</p>');
+        }
         if ($corridas) {
             // Lado a lado solo en la ficha del caballo: las de jockeys y cuidadores tienen muchas filas y montos grandes.
-            $o .= '<div class="' . ($tipo === 'caballo' ? 'dos' : 'una') . '"><div><h2>Puestos por año</h2>' . self::tablaPuestos($corridas, fn ($a) => substr($a['fecha'], 0, 4), 'Año') . '</div>'
-                . '<div><h2>Puestos por distancia</h2>' . self::tablaPuestos($corridas, fn ($a) => ($a['distancia'] ? $a['distancia'] . ' m' : 'sin dato') . (self::cesped($a) ? ' césped' : ''), 'Distancia', true) . '</div></div>';
-            // Por hipódromo, con el césped de Maroñas aparte de la arena.
-            $o .= '<h2>Puestos por hipódromo y pista</h2>' . self::tablaPuestos($corridas, fn ($a) => ProgramaNoOficial::nombreHipodromo((int)$a['hipodromo_id'])
-                . ((int)$a['hipodromo_id'] === 1 ? (self::cesped($a) ? ' · césped' : ' · arena') : ''), 'Hipódromo', false, true);
+            $o .= '<div class="' . ($tipo === 'caballo' ? 'dos' : 'una') . '"><div><h2>Puestos por año</h2>' . self::tablaPuestos($corridas, fn ($a) => substr($a['fecha'], 0, 4), 'Año', false, false, $premios) . '</div>'
+                . '<div><h2>Puestos por distancia</h2>' . self::tablaPuestos($corridas, fn ($a) => ($a['distancia'] ? $a['distancia'] . ' m' : 'sin dato') . ($this->cesped($a) ? ' césped' : ''), 'Distancia', true, false, $premios) . '</div></div>';
+            // Por hipódromo, con el césped de Maroñas aparte de la arena (en los otros países, en todos los hipódromos).
+            $o .= '<h2>Puestos por hipódromo y pista</h2>' . self::tablaPuestos($corridas, fn ($a) => $this->hipodromo((int)$a['hipodromo_id'])
+                . ($this->pais ? ' · ' . ($a['superficie'] ?: 'sin dato') : ((int)$a['hipodromo_id'] === 1 ? ($this->cesped($a) ? ' · césped' : ' · arena') : '')), 'Hipódromo', false, true, $premios);
             $lista = $corridas;
             $desde = date('Y-m-d', strtotime('-' . self::DIAS_LISTA . ' day'));
             if (!$todas) {
@@ -153,45 +231,65 @@ final class Fichas
                 $o .= '<p class="nota">' . count($lista) . ' de ' . count($corridas) . '. <a href="?todas=1' . ($filtro !== false ? '&amp;h=' . self::slug($hips[$filtro]) : '') . '">Ver todas</a></p>';
             }
             $o .= $this->tablaCorridas($lista, $tipo);
-            $o .= '<p class="nota">Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), según la condición; si la condición no trae el detalle, '
-                . 'se estima con el reparto habitual de la bolsa. ' . (in_array($tipo, ['jockey', 'cuidador'], true) ? 'Son los premios de los caballos, no la parte del ' . $tipo . '.' : '')
+            $o .= '<p class="nota">' . match ($this->pais) {
+                    'ar' => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), en pesos, según el Stud Book. ',
+                    'br' => 'El JCB no publica los premios. ',
+                    'hk' => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), en dólares de Hong Kong, estimado con el reparto habitual del HKJC. ',
+                    default => 'Premio cobrado: lo que paga la carrera al puesto del caballo (del 1º al 5º), según la condición; si la condición no trae el detalle, '
+                        . 'se estima con el reparto habitual de la bolsa. ',
+                } . ($this->pais !== 'br' && in_array($tipo, ['jockey', 'cuidador'], true) ? 'Son los premios de los caballos, no la parte del ' . $tipo . '.' : '')
                 . ($tipo === 'criador' ? 'Son las carreras y los premios de los caballos que crió.' : '') . '</p>';
         } else {
             $o .= '<p>No tiene carreras corridas registradas.</p>';
         }
-        return $this->documento($titulo . ' · ' . self::TIPOS[$tipo], $o);
+        return $this->documento($titulo . ' · ' . self::TIPOS[$tipo] . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : ''), $o);
     }
 
-    public function buscar(string $q): string
+    /** @param array<string, Fichas> $otras fichas de los otros países (clave de PAISES => Fichas), para buscar también ahí */
+    public function buscar(string $q, array $otras = []): string
     {
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
         $q = trim(mb_substr($q, 0, 60));
         $o = '<h1>Buscar</h1><form class="buscar" action="/buscar"><input name="q" value="' . $e($q) . '" placeholder="Caballo, jockey, cuidador, stud o criador" autofocus> <button>Buscar</button></form>';
         if (mb_strlen($q) >= 2) {
-            $like = '%' . addcslashes($q, '%_\\') . '%';
-            $st = $this->db->prepare('SELECT ca.id, ca.nombre, ca.pais, ca.anio_nac, MAX(r.fecha) AS ultima FROM caballo ca
-                LEFT JOIN actuacion a ON a.caballo_id = ca.id LEFT JOIN carrera c ON c.id = a.carrera_id LEFT JOIN reunion r ON r.id = c.reunion_id
-                WHERE ca.nombre LIKE ? GROUP BY ca.id ORDER BY ultima DESC LIMIT 50');
-            $st->execute([$like]);
-            $filas = [];
-            foreach ($st as $c) {
-                $filas[] = '<li>' . $this->enlace('caballo', $c['id'], $c['nombre']) . ' <small>' . ($c['pais'] !== 'URU' ? $e($c['pais']) . ' ' : '') . (int)$c['anio_nac']
-                    . ($c['ultima'] ? ' · última carrera ' . date('d/m/Y', strtotime($c['ultima'])) : '') . '</small></li>';
-            }
-            foreach (['jockey', 'cuidador', 'stud', 'criador'] as $t) {
-                $st = $this->db->prepare($t === 'criador'
-                    ? 'SELECT p.id, p.nombre, COUNT(a.carrera_id) AS n FROM persona p LEFT JOIN caballo ca ON ca.criador_id = p.id LEFT JOIN actuacion a ON a.caballo_id = ca.id
-                       WHERE p.tipo = ? AND p.nombre LIKE ? GROUP BY p.id ORDER BY n DESC LIMIT 30'
-                    : "SELECT p.id, p.nombre, COUNT(a.carrera_id) AS n FROM persona p LEFT JOIN actuacion a ON a.{$t}_id = p.id
-                       WHERE p.tipo = ? AND p.nombre LIKE ? GROUP BY p.id ORDER BY n DESC LIMIT 30");
-                $st->execute([$t, $like]);
-                foreach ($st as $p) {
-                    $filas[] = '<li>' . $this->enlace($t, $p['id'], $p['nombre']) . ' <small>' . self::TIPOS[$t] . ' · ' . (int)$p['n'] . ' carreras</small></li>';
+            $todas = [];
+            foreach (['Uruguay' => $this] + array_combine(array_map(fn ($p) => self::PAISES[$p][0], array_keys($otras)), $otras) as $pais => $fichas) {
+                if ($filas = $fichas->encontrar($q)) {
+                    $todas[] = ($otras ? '<h2>' . $e($pais) . '</h2>' : '') . '<ul class="resultados">' . implode('', $filas) . '</ul>';
                 }
             }
-            $o .= $filas ? '<ul class="resultados">' . implode('', $filas) . '</ul>' : '<p>No se encontró nada con «' . $e($q) . '».</p>';
+            $o .= $todas ? implode('', $todas) : '<p>No se encontró nada con «' . $e($q) . '».</p>';
         }
         return $this->documento('Buscar', $o);
+    }
+
+    /** Lo que coincide con la búsqueda en esta base: elementos <li> con el enlace a cada ficha. */
+    public function encontrar(string $q): array
+    {
+        $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
+        $like = '%' . addcslashes($q, '%_\\') . '%';
+        $local = $this->pais ? self::PAISES[$this->pais][2] : 'URU';
+        $st = $this->db->prepare('SELECT ca.id, ca.nombre, ca.pais, ca.anio_nac, MAX(r.fecha) AS ultima FROM caballo ca
+            LEFT JOIN actuacion a ON a.caballo_id = ca.id LEFT JOIN carrera c ON c.id = a.carrera_id LEFT JOIN reunion r ON r.id = c.reunion_id
+            WHERE ca.nombre LIKE ? GROUP BY ca.id ORDER BY ultima DESC LIMIT 50');
+        $st->execute([$like]);
+        $filas = [];
+        foreach ($st as $c) {
+            $filas[] = '<li>' . $this->enlace('caballo', $c['id'], $c['nombre']) . ' <small>' . ($c['pais'] && $c['pais'] !== $local && !str_ends_with($c['nombre'], ')') ? $e($c['pais']) . ' ' : '')
+                . ($c['anio_nac'] ? (int)$c['anio_nac'] : '') . ($c['ultima'] ? ' · última carrera ' . date('d/m/Y', strtotime($c['ultima'])) : '') . '</small></li>';
+        }
+        foreach (array_keys(array_diff_key($this->tipos(), ['caballo' => 1])) as $t) {
+            $st = $this->db->prepare($t === 'criador'
+                ? 'SELECT p.id, p.nombre, COUNT(a.carrera_id) AS n FROM persona p LEFT JOIN caballo ca ON ca.criador_id = p.id LEFT JOIN actuacion a ON a.caballo_id = ca.id
+                   WHERE p.tipo = ? AND p.nombre LIKE ? GROUP BY p.id ORDER BY n DESC LIMIT 30'
+                : "SELECT p.id, p.nombre, COUNT(a.carrera_id) AS n FROM persona p LEFT JOIN actuacion a ON a.{$t}_id = p.id
+                   WHERE p.tipo = ? AND p.nombre LIKE ? GROUP BY p.id ORDER BY n DESC LIMIT 30");
+            $st->execute([$t, $like]);
+            foreach ($st as $p) {
+                $filas[] = '<li>' . $this->enlace($t, $p['id'], $p['nombre']) . ' <small>' . self::TIPOS[$t] . ' · ' . (int)$p['n'] . ' carreras</small></li>';
+            }
+        }
+        return $filas;
     }
 
     // ---------------------------------------------------------------- inscripciones (para las próximas carreras)
@@ -295,12 +393,19 @@ final class Fichas
 
     // ---------------------------------------------------------------- tablas
 
-    private static function cesped(array $a): bool
+    private function cesped(array $a): bool
     {
-        return Clasificador::superficie($a['superficie'], (int)$a['hipodromo_id']) === 'césped';
+        return $this->pais ? str_starts_with(mb_strtolower((string)$a['superficie']), 'c')
+            : Clasificador::superficie($a['superficie'], (int)$a['hipodromo_id']) === 'césped';
     }
 
-    private static function resumen(array $corridas): string
+    /** Columnas de la lista de carreras (Hong Kong no tiene studs). */
+    private function columnas(string $tipo): array
+    {
+        return array_values(array_intersect(self::COLUMNAS[$tipo], array_keys($this->tipos())));
+    }
+
+    private static function resumen(array $corridas, bool $premios = true): string
     {
         $n = count($corridas);
         if (!$n) {
@@ -309,10 +414,10 @@ final class Fichas
         $g = count(array_filter($corridas, fn ($a) => $a['puesto'] === 1));
         $pl = count(array_filter($corridas, fn ($a) => $a['puesto'] !== null && $a['puesto'] <= 3));
         return '<p class="resumen"><b>' . $n . '</b> carreras · <b>' . $g . '</b> ganadas (' . self::pct($g, $n) . ') · <b>' . $pl . '</b> en el marcador (' . self::pct($pl, $n) . ')'
-            . ' · Premios: <b>' . self::plata(self::sumarPremios($corridas)) . '</b> · Desde ' . date('d/m/Y', strtotime(end($corridas)['fecha'])) . '</p>';
+            . ($premios ? ' · Premios: <b>' . self::plata(self::sumarPremios($corridas)) . '</b>' : '') . ' · Desde ' . date('d/m/Y', strtotime(end($corridas)['fecha'])) . '</p>';
     }
 
-    private static function tablaPuestos(array $corridas, \Closure $grupo, string $titulo, bool $ordenNumerico = false, bool $porCantidad = false): string
+    private static function tablaPuestos(array $corridas, \Closure $grupo, string $titulo, bool $ordenNumerico = false, bool $porCantidad = false, bool $premios = true): string
     {
         $g = [];
         foreach ($corridas as $a) {
@@ -323,15 +428,15 @@ final class Fichas
         } else {
             $ordenNumerico ? uksort($g, fn ($a, $b) => [(int)$a, $a] <=> [(int)$b, $b]) : krsort($g);
         }
-        $o = '<table class="puestos"><thead><tr><th>' . $titulo . '</th><th>Corrió</th><th>1º</th><th>2º</th><th>3º</th><th>4º</th><th>5º</th><th>Otros</th><th>% gan.</th><th>Premios</th></tr></thead><tbody>';
-        $fila = function (string $etiqueta, array $as, bool $total = false): string {
+        $o = '<table class="puestos"><thead><tr><th>' . $titulo . '</th><th>Corrió</th><th>1º</th><th>2º</th><th>3º</th><th>4º</th><th>5º</th><th>Otros</th><th>% gan.</th>' . ($premios ? '<th>Premios</th>' : '') . '</tr></thead><tbody>';
+        $fila = function (string $etiqueta, array $as, bool $total = false) use ($premios): string {
             $n = count($as);
             $p = array_count_values(array_map(fn ($a) => $a['puesto'] !== null && $a['puesto'] <= 5 ? $a['puesto'] : 0, $as));
             $o = '<tr' . ($total ? ' class="total"' : '') . '><td>' . htmlspecialchars($etiqueta) . '</td><td>' . $n . '</td>';
             for ($i = 1; $i <= 5; $i++) {
                 $o .= '<td>' . ($p[$i] ?? 0) . '</td>';
             }
-            return $o . '<td>' . ($p[0] ?? 0) . '</td><td>' . self::pct($p[1] ?? 0, $n) . '</td><td>' . self::plata(self::sumarPremios($as), '<br>') . '</td></tr>';
+            return $o . '<td>' . ($p[0] ?? 0) . '</td><td>' . self::pct($p[1] ?? 0, $n) . '</td>' . ($premios ? '<td>' . self::plata(self::sumarPremios($as), '<br>') . '</td>' : '') . '</tr>';
         };
         foreach ($g as $k => $as) {
             $o .= $fila((string)$k, $as);
@@ -342,22 +447,23 @@ final class Fichas
     private function tablaCorridas(array $lista, string $tipo): string
     {
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
+        $premios = $this->pais !== 'br';
         $o = '<div class="ancha"><table class="corridas"><thead><tr><th>Fecha</th><th>Hip.</th><th>Carrera</th><th>Dist.</th><th>Pista</th><th>Puesto</th>'
-            . implode('', array_map(fn ($c) => '<th>' . self::TIPOS[$c] . '</th>', self::COLUMNAS[$tipo]))
-            . '<th>Kg</th><th>Sport</th><th>Premio cobrado</th></tr></thead><tbody>';
+            . implode('', array_map(fn ($c) => '<th>' . self::TIPOS[$c] . '</th>', $this->columnas($tipo)))
+            . '<th>Kg</th><th>' . (['hk' => 'Cuota', 'br' => 'Rateio'][$this->pais ?? ''] ?? 'Sport') . '</th>' . ($premios ? '<th>Premio cobrado</th>' : '') . '</tr></thead><tbody>';
         foreach ($lista as $a) {
-            $clave = $a['fecha'] . '_' . $a['hipodromo_id'];
+            $clave = $a['fecha'] . '_' . $this->web((int)$a['hipodromo_id']);
             $carrera = $a['numero'] . 'ª ' . $e($a['nombre_carrera']);
             if (is_file("{$this->carpeta}/resultados/$clave.html")) {
                 $carrera = '<a href="/resultados/' . $clave . '.html#carrera-' . $a['numero'] . '">' . $carrera . '</a>';
             }
             $o .= '<tr class="' . ($a['puesto'] !== null && $a['puesto'] <= 3 ? 'p' . $a['puesto'] : '') . '"><td>' . date('d/m/y', strtotime($a['fecha'])) . '</td><td>'
-                . ProgramaNoOficial::nombreHipodromo((int)$a['hipodromo_id']) . '</td><td class="nom">' . $carrera . '</td><td>' . $e($a['distancia']) . ($a['superficie'] === 'césped' ? ' c' : '')
+                . $e($this->hipodromo((int)$a['hipodromo_id'])) . '</td><td class="nom">' . $carrera . '</td><td>' . $e($a['distancia']) . ($a['superficie'] === 'césped' ? ' c' : '')
                 . '</td><td>' . $e($a['pista']) . '</td><td><b>' . ($a['puesto'] !== null ? $a['puesto'] . 'º' : $e($a['puesto_texto'])) . '</b><small>/' . (int)$a['corredores'] . '</small></td>'
-                . implode('', array_map(fn ($c) => '<td>' . $this->enlace($c, $a[$c . '_id'], $a[$c]) . '</td>', self::COLUMNAS[$tipo]))
+                . implode('', array_map(fn ($c) => '<td>' . $this->enlace($c, $a[$c . '_id'], $a[$c]) . '</td>', $this->columnas($tipo)))
                 . '<td>' . ($a['peso_asignado'] !== null ? number_format((float)$a['peso_asignado'], 1, ',', '.') : '') . '</td><td>'
-                . ($a['sport'] > 0 ? number_format((float)$a['sport'], 2, ',', '.') : '') . '</td><td>'
-                . ($a['cobrado'] ? $a['cobrado'][0] . ' ' . number_format($a['cobrado'][1], 0, ',', '.') : '') . '</td></tr>';
+                . ($a['sport'] > 0 ? number_format((float)$a['sport'], 2, ',', '.') : '') . '</td>'
+                . ($premios ? '<td>' . ($a['cobrado'] ? $a['cobrado'][0] . ' ' . number_format($a['cobrado'][1], 0, ',', '.') : '') . '</td>' : '') . '</tr>';
         }
         return $o . '</tbody></table></div>';
     }
@@ -405,8 +511,14 @@ final class Fichas
 
     private function enlace(string $tipo, int|string|null $id, ?string $nombre): string
     {
+        return self::enlazar($tipo, $id ? (int)$id : null, $nombre, $this->pais);
+    }
+
+    /** El nombre con el enlace a su ficha (si tiene id), para las fichas y los programas de cada país. */
+    public static function enlazar(string $tipo, ?int $id, ?string $nombre, ?string $pais = null): string
+    {
         $n = htmlspecialchars((string)$nombre, ENT_QUOTES);
-        return $id ? '<a href="' . htmlspecialchars(self::url($tipo, (int)$id, (string)$nombre)) . '">' . $n . '</a>' : $n;
+        return $id ? '<a href="' . htmlspecialchars(self::url($tipo, $id, (string)$nombre, $pais), ENT_QUOTES) . '">' . $n . '</a>' : $n;
     }
 
     private ?array $colores = null;
