@@ -97,7 +97,7 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 
 | Archivo | Qué es |
 |---|---|
-| `index.php` | Portada: próximas reuniones y reuniones pasadas por mes, con un árbol país → hipódromos para filtrar (`/pais-uruguay`, `/pais-hong-kong`, `/hipodromo-sha-tin`). Lee `indice.json`. |
+| `index.php` | Portada: próximas reuniones, un calendario para ver las reuniones pasadas de un día y las últimas 20, con un árbol país → hipódromos para filtrar (`/pais-uruguay`, `/pais-hong-kong`, `/hipodromo-sha-tin`). Lee `indice.json`. |
 | `programas/AAAA-MM-DD_<hip>.html` | Programa no oficial. Arriba, los borrados y los cambios detectados desde que se publicó. El calendario salta entre los programas publicados. |
 | `resultados/AAAA-MM-DD_<hip>.html` | Lo que decía el programa (orden por probabilidad) contra la llegada, carrera por carrera, con el acierto de la reunión. |
 | `ficha.php` | Fichas de caballos, jockeys, cuidadores, studs y criadores (`/caballo/123-nombre`, `/jockey/…`, `/cuidador/…`, `/stud/…`, `/criador/…`) y el buscador (`/buscar?q=`): todas las carreras corridas y las próximas (tabla `inscripcion`), premios cobrados, puestos por año y por distancia, con filtro por hipódromo. A diferencia de la portada, lee la base; en cPanel encuentra el proyecto con el `.granchance.php` que deja `publicar.php`. Los programas y resultados enlazan cada caballo, jockey, cuidador y stud con su ficha, y el programa suma el criador de cada caballo (sale de la base). Los otros países tienen sus fichas con su base (`/ar/caballo/…`, `/br/jockey/…`, `/hk/cuidador/…`; Hong Kong sin studs ni criadores), sin próximas carreras; sus programas no oficiales y los rankings enlazan a ellas, y el buscador busca en los cuatro países. |
