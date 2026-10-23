@@ -17,7 +17,7 @@
 require __DIR__ . '/_inicio.php';
 date_default_timezone_set($config['zona_horaria'] ?? 'America/Montevideo');
 
-use GranChance\{Borrados, Cliente, Modelo, Prensa, ProgramaNoOficial, Publicador, Velocidades};
+use GranChance\{Borrados, CampaniaExterior, Cliente, Modelo, Prensa, ProgramaNoOficial, Publicador, Velocidades};
 
 $opc = opciones($argv);
 $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
@@ -39,7 +39,7 @@ $borrados = new Borrados($db, $config['url_borrados']
     ?? 'https://mobile-rest-services-v3.azurewebsites.net/XTurfRestService.svc/GetScratchedRaceParticipants');
 $pub = new Publicador(
     $db,
-    new ProgramaNoOficial($db, $vel, $modelo, new Prensa($db)),
+    new ProgramaNoOficial($db, $vel, $modelo, new Prensa($db), CampaniaExterior::desdeConfig($config, 'uy')),
     new Cliente(str_replace('docType=ResultadoCarreraWeb', 'docType=Programa', $config['url_resultados']),
         $config['carpeta_crudos'] . '/programas', (float)$config['pausa_segundos']),
     $borrados,

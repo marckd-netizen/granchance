@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace GranChance\JP;
 
 use GranChance\{Modelo as ModeloUy, ProgramaNoOficial as ProgramaUy};
-use GranChance\Fichas;
+use GranChance\{CampaniaExterior, Fichas};
 use PDO;
 
 /**
@@ -26,7 +26,7 @@ final class ProgramaNoOficial
     private const CUADROS = [1 => ['#ffffff', '#000000'], 2 => ['#000000', '#ffffff'], 3 => ['#e60012', '#ffffff'], 4 => ['#0068b7', '#ffffff'],
         5 => ['#fff100', '#000000'], 6 => ['#009944', '#ffffff'], 7 => ['#f39800', '#000000'], 8 => ['#f19ec2', '#000000']];
 
-    public function __construct(private PDO $db, private Velocidades $vel, private Modelo $modelo)
+    public function __construct(private PDO $db, private Velocidades $vel, private Modelo $modelo, private ?CampaniaExterior $exterior = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -62,6 +62,10 @@ final class ProgramaNoOficial
                 $h['pedigri'] = $this->pedigri($h);
                 $h['ultimas6'] = implode('-', array_map(fn ($a) => $a['puesto'] ?? '0', array_slice($h['antecedentes'], 0, 6)));
                 $h += $this->resumen($h, $c, $eqHoy, $pesoTop);
+                $h['exterior'] = $this->exterior?->buscar($h['nombre'], isset($h['pedigri']['anio_nac']) ? (int)$h['pedigri']['anio_nac'] : null, $h['pedigri']['padre'] ?? null, $h['pedigri']['madre'] ?? null, $fecha) ?? [];
+                if ($h['exterior']) {
+                    $h['notas'][] = 'Corrió en ' . CampaniaExterior::resumen($h['exterior']);
+                }
             }
             unset($h);
             $this->frente($c, $fecha);
@@ -387,12 +391,20 @@ final class ProgramaNoOficial
             . ($h['propietario'] ? ' · Propietario: ' . $this->persona('stud', $h['propietario']) : '')
             . ($ped['criador'] ? ' · Criador: ' . $this->persona('criador', $ped['criador']) : '') . '</p>';
         if (!$h['antecedentes']) {
-            return $o . '<p class="debut">Sin carreras en la JRA</p></div>';
+            $o .= '<p class="debut">Sin carreras en la JRA</p>';
+            if (!$h['exterior']) {
+                return $o . '</div>';
+            }
         }
-        $o .= '<table class="ant"><thead><tr><th>Fecha</th><th>Hip.</th><th>P.</th><th>Ganador</th><th>Segundo</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
-            . '<th>Pista</th><th>T. ganador</th><th>T. final</th><th>Vel.</th><th>Ajuste</th><th>Vel. corr.</th><th>Índ. nivel</th><th>Índice</th>'
-            . '<th>Nivel</th><th>Jockey</th><th>Kg</th><th>Nº</th><th>Pos.</th><th>Cuota</th></tr></thead><tbody>';
-        foreach (array_slice($h['antecedentes'], 0, self::ANTECEDENTES) as $a) {
+        $cols = ['Fecha', 'Hip.', 'P.', 'Ganador', 'Segundo', 'Cpos.', 'Dist.', 'Sup.', 'Pista', 'T. ganador', 'T. final',
+            'Vel.', 'Ajuste', 'Vel. corr.', 'Índ. nivel', 'Índice', 'Nivel', 'Jockey', 'Kg', 'Nº', 'Pos.', 'Cuota'];
+        $o .= '<table class="ant"><thead><tr><th>' . implode('</th><th>', $cols) . '</th></tr></thead><tbody>';
+        // Las últimas, con las de otros países entrelazadas por fecha.
+        foreach (CampaniaExterior::mezclar($h['antecedentes'], $h['exterior'], self::ANTECEDENTES) as $a) {
+            if (isset($a['exterior'])) {
+                $o .= CampaniaExterior::fila($a, $cols, $e);
+                continue;
+            }
             $fecha = date('d/m/y', strtotime($a['fecha']));
             if ($otros = array_diff($juntos[(int)$a['carrera_id']] ?? [], [$h['numero']])) {
                 $fecha = '<b>' . $fecha . '</b> <small>con ' . $e(implode(', ', $otros)) . '</small>';

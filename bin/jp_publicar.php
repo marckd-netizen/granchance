@@ -11,6 +11,7 @@
 require __DIR__ . '/jp_comun.php';
 ini_set('memory_limit', '-1');
 
+use GranChance\CampaniaExterior;
 use GranChance\JP\{Modelo, ParserResultados, ProgramaNoOficial, Publicador, Repositorio, Velocidades};
 use GranChance\Publicador as PublicadorUy;
 
@@ -25,7 +26,7 @@ if (!$modelo->cargar()) {
     fwrite(STDERR, "Falta entrenar el modelo de Japón: php bin/jp_modelo.php\n");
     exit(1);
 }
-$pub = new Publicador($db, new ProgramaNoOficial($db, $vel, $modelo), $cli, $carpeta, (string)($config['google_analytics'] ?? ''));
+$pub = new Publicador($db, new ProgramaNoOficial($db, $vel, $modelo, CampaniaExterior::desdeConfig($config, 'jp')), $cli, $carpeta, (string)($config['google_analytics'] ?? ''));
 
 // Reuniones a publicar: las del calendario de la JRA desde hoy (hora de Japón) hasta --dias después.
 $hoy = Publicador::hoy();

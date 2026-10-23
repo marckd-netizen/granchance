@@ -7,6 +7,7 @@
 require __DIR__ . '/ar_comun.php';
 ini_set('memory_limit', '-1');
 
+use GranChance\CampaniaExterior;
 use GranChance\AR\{Modelo, ParserResultados, ProgramaNoOficial, Velocidades};
 
 $opc = opciones($argv);
@@ -26,7 +27,7 @@ if (!$modelo->cargar()) {
     fwrite(STDERR, "Falta entrenar el modelo: php bin/ar_modelo.php\n");
     exit(1);
 }
-$gen = new ProgramaNoOficial($db, $vel, $modelo);
+$gen = new ProgramaNoOficial($db, $vel, $modelo, CampaniaExterior::desdeConfig($config, 'ar'));
 $hip = (int)$r['hipodromo_id'];
 $p = $gen->armar($prog, $hip);
 $salida = (string)($opc['salida'] ?? $ar['carpeta_crudos'] . "/programas/{$r['fecha']}_" . (ProgramaNoOficial::SIGLAS[$hip] ?? $hip) . '.html');

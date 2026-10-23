@@ -11,6 +11,7 @@
 require __DIR__ . '/br_comun.php';
 ini_set('memory_limit', '-1');
 
+use GranChance\CampaniaExterior;
 use GranChance\BR\{Modelo, ParserResultados, ProgramaNoOficial, Publicador, Repositorio, Velocidades};
 use GranChance\Publicador as PublicadorUy;
 
@@ -25,7 +26,7 @@ if (!$modelo->cargar()) {
     fwrite(STDERR, "Falta entrenar el modelo de Brasil: php bin/br_modelo.php\n");
     exit(1);
 }
-$pub = new Publicador($db, new ProgramaNoOficial($db, $vel, $modelo), $cli, $carpeta, (string)($config['google_analytics'] ?? ''));
+$pub = new Publicador($db, new ProgramaNoOficial($db, $vel, $modelo, CampaniaExterior::desdeConfig($config, 'br')), $cli, $carpeta, (string)($config['google_analytics'] ?? ''));
 $repo = Repositorio::desdeConfig($br['db']);
 
 // Reuniones a publicar: las brasileñas del raceday desde hoy (hora de Brasília) hasta --dias después.

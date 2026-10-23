@@ -90,6 +90,17 @@ Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `
 - El Programa no trae la distancia: se deduce del récord que figura en cada carrera (`record_distancia`, o buscando la carrera
   del récord en la base). Si no se encuentra, `bin/programa.php` avisa y se indica con `--distancias=9:1300`.
 - Un caballo del programa es el mismo de la base si coinciden nombre, país y año de nacimiento (edad del programa al 1° de julio).
+- **Campaña en otros países** (`src/CampaniaExterior.php`): en la tabla de antecedentes del programa de cada país, las
+  carreras que el caballo corrió en los otros (Uruguay, Argentina, Brasil, Hong Kong, Japón) se entrelazan por fecha con
+  las del país: siguen siendo las últimas 6, y las de afuera van marcadas con el país junto al hipódromo ("SIS ARG"), sin
+  ajuste ni índices. El resumen lo anota ("Corrió en Brasil (9)", "Debuta en Uruguay"). En la ficha del caballo, la campaña
+  de cada país va aparte, completa y con el enlace a su ficha allá. Es el mismo caballo si coinciden el nombre sin el
+  país del final ("SNAP DECISION-ARG", "GIULIA(USA)"), el padre y la madre, y el año de nacimiento difiere en uno como mucho
+  (Brasil lo cuenta distinto); el nombre solo no alcanza, hay muchos homónimos de la misma edad. Se busca en las bases de
+  `config.php` (unos 2 ms por caballo, el nombre está indexado), así sirve también para el que debuta viniendo de afuera;
+  si la base de un país no está, sale sin esa campaña. Con las bases de octubre de 2026 hay unos 470 caballos en dos
+  países (Uruguay y Brasil 220, Uruguay y Argentina 82, Argentina y Brasil 51, Hong Kong y Japón 121). El índice y la
+  probabilidad siguen con la campaña del país, porque cada país tiene su escala de velocidades.
 
 ## Publicación en la web (granchance.com)
 
