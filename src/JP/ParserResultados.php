@@ -94,6 +94,10 @@ final class ParserResultados
             $c['hora'] = strlen($m[6]) === 4 ? '0' . $m[6] : $m[6];
         } elseif (preg_match('/([A-Z][a-z]+ \d{1,2}, \d{4}), (\d{3,4})m, (Turf|Dirt|Jump)/', $t, $m)) {
             [$c['fecha'], $c['distancia'], $c['superficie']] = [date('Y-m-d', strtotime($m[1])), (int)$m[2], $m[3]];
+            // En el programa todavía no hay estado de la pista ni clima: "October 24, 2026, 1600m, Turf, Post time 15:45".
+            if (preg_match('/Post time (\d{1,2}:\d\d)/', $t, $mh)) {
+                $c['hora'] = strlen($mh[1]) === 4 ? '0' . $mh[1] : $mh[1];
+            }
         }
         if (preg_match('/\n?([^\n]*?)Value of race: ([\d,]+) Yen/', $t, $m)) {
             $c['condicion'] = trim($m[1], " ,");
@@ -240,7 +244,7 @@ final class ParserResultados
     }
 
     /** Las dos líneas de una celda ("Heart's Cry<BR>Nasuno Fiona"). */
-    private static function dos(DOMNode $td): array
+    public static function dos(DOMNode $td): array
     {
         $partes = [];
         $actual = '';

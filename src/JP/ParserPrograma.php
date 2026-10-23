@@ -24,7 +24,7 @@ final class ParserPrograma
         $doc->loadHTML('<?xml encoding="utf-8"?>' . $html);
         libxml_clear_errors();
         $x = new DOMXPath($doc);
-        foreach ($x->query('//table[.//td[contains(@class,"horseHead") and normalize-space(.)="Horse"] and not(.//td[contains(@class,"horseHead") and contains(., "Sire")])]') as $tabla) {
+        foreach ($x->query('//table[.//td[contains(@class,"horseHead") and normalize-space(.)="Horse"]]') as $tabla) {
             $cols = [];
             foreach ($x->query('.//tr[td[contains(@class,"horseHead")]][1]/td', $tabla) as $i => $td) {
                 $cols[strtolower(preg_replace('/[^A-Za-z]/', '', $td->textContent))] = $i;
@@ -69,6 +69,18 @@ final class ParserPrograma
         $peso = str_replace(',', '.', $col(['weightkg', 'weight', 'wgt']));
         $num = $col(['hs', 'no', 'horseno']);
         $ped = $pedigri[$codigo] ?? [];
+        // El Race Card trae el pedigrí, jockey, cuidador, propietario y criador en la misma tabla, de a dos por celda
+        // ("Sire<BR>Dam", "Jockey<BR>Trainer"...): la tabla de pedigrí del resultado no existe y lo que leyó ParserResultados no sirve.
+        if (isset($cols['siredam'])) {
+            $dos = fn (string $k) => isset($cols[$k], $tds[$cols[$k]]) ? ParserResultados::dos($tds[$cols[$k]]) : [null, null];
+            [$padre, $madre] = $dos('siredam');
+            [$abuelo, $abuela] = $dos('damssiredamsdam');
+            [$jockey, $cuidador] = $dos('jockeytrainer');
+            [$prop, $criador] = $dos('ownerbreeder');
+            $ped = ['padre' => ParserResultados::mayusculas($padre), 'madre' => ParserResultados::mayusculas($madre),
+                'abuelo_materno' => ParserResultados::mayusculas($abuelo), 'abuela_materna' => ParserResultados::mayusculas($abuela),
+                'jockey' => $jockey, 'cuidador' => $cuidador, 'propietario' => $prop, 'criador' => $criador];
+        }
         return [
             'codigo' => $codigo, 'nombre' => ParserResultados::mayusculas($nombre), 'pais' => $pais,
             'numero' => ctype_digit($num) ? (int)$num : null,
