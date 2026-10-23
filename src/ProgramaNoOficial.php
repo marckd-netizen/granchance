@@ -611,12 +611,21 @@ final class ProgramaNoOficial
             . ' · Cuidador: ' . $e($h['cuidador']) . $cambio($h['cambio_cuidador']) . ' · Stud: ' . $e($h['stud']) . ($col ? ' <small class="colores">(' . $e($col) . ')</small>' : '') . $cambio($h['cambio_stud'])
             . ' · Gatera: ' . $e($h['gatera']) . ' · ' . $e($h['pedigri']) . '</p>';
         if (!$h['antecedentes']) {
-            return $o . '<p class="debut">' . ($h['exterior'] ? 'Debuta en Uruguay' : 'Debutante (sin antecedentes en la base)') . '</p>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
+            $o .= '<p class="debut">' . ($h['exterior'] ? 'Debuta en Uruguay' : 'Debutante (sin antecedentes en la base)') . '</p>';
+            if (!$h['exterior']) {
+                return $o . '</div>';
+            }
         }
-        $o .= '<table class="ant"><thead><tr><th>Fecha</th><th>Hip.</th><th>P.</th><th>Ganador</th><th>Segundo</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
-            . '<th>Pista</th><th>Viento</th><th>T. ganador</th><th>T. final</th><th>Vel.</th><th>Ajuste</th><th>Vel. corr.</th><th>Índ. cat.</th><th>Índice</th>'
-            . '<th>Categoría</th><th>Jockey</th><th>Kg</th><th>Gat.</th><th>Div.</th><th>Peso cab.</th><th>Trat.</th><th>Marca</th></tr></thead><tbody>';
-        foreach (array_slice($h['antecedentes'], 0, self::ANTECEDENTES) as $a) {
+        $cols = ['Fecha', 'Hip.', 'P.', 'Ganador', 'Segundo', 'Cpos.', 'Dist.', 'Sup.', 'Pista', 'Viento', 'T. ganador', 'T.
+            final', 'Vel.', 'Ajuste', 'Vel. corr.', 'Índ. cat.', 'Índice', 'Categoría', 'Jockey', 'Kg', 'Gat.', 'Div.',
+            'Peso cab.', 'Trat.', 'Marca'];
+        $o .= '<table class="ant"><thead><tr><th>' . implode('</th><th>', $cols) . '</th></tr></thead><tbody>';
+        // Las últimas, con las de otros países entrelazadas por fecha.
+        foreach (CampaniaExterior::mezclar($h['antecedentes'], $h['exterior'], self::ANTECEDENTES) as $a) {
+            if (isset($a['exterior'])) {
+                $o .= CampaniaExterior::fila($a, $cols, $e);
+                continue;
+            }
             $nom = fn (?string $n, bool $rival) => $rival ? '<b>' . $e($n) . '</b>' : $e($n);
             $fecha = date('d/m/y', strtotime($a['fecha']));
             if ($a['con_rivales']) {
@@ -633,7 +642,7 @@ final class ProgramaNoOficial
                 . '</td><td>' . $e($a['gatera']) . '</td><td>' . self::num($a['sport'] !== null ? (float)$a['sport'] : null) . '</td><td>' . $e($a['peso_caballo'] ?: '')
                 . '</td><td>' . $e($a['tratamiento']) . '</td><td>' . $e($a['marca']) . '</td></tr>';
         }
-        return $o . '</tbody></table>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
+        return $o . '</tbody></table></div>';
     }
 
     /** Kilos que cargó el ganador o el segundo de un antecedente, al lado del nombre: " (57)", " (56,5)". Lo usan todos los países. */
@@ -755,7 +764,7 @@ JS;
             ?? ($id > 400 ? \GranChance\JP\ProgramaNoOficial::NOMBRES[$id - 400] ?? null : null) ?? "Hipódromo $id";
     }
 
-    private static function siglaHipodromo(int $id): string
+    public static function siglaHipodromo(int $id): string
     {
         return [1 => 'MRÑ', 4 => 'COL', 8 => 'FLO', 9 => 'FDA', 13 => 'LPD', 16 => 'MEL', 21 => 'PAY', 22 => 'ROC'][$id] ?? (string)$id;
     }
@@ -812,7 +821,7 @@ th, td { border:1px solid var(--linea); padding:2px 5px; white-space:nowrap; }
 .cambio { color:var(--menos); font-weight:600; } .debut { color:var(--suave); font-style:italic; }
 .mas { color:var(--mas); font-weight:600; } .menos { color:var(--menos); } .fuerte { font-size:14px; }
 .cat { font-size:11px; color:var(--suave); }
-p.exterior { margin:6px 0 0; color:var(--acento); font-weight:600; } table.exterior { border-left:3px solid var(--acento); }
+tr.exterior td { background:color-mix(in srgb, var(--acento) 9%, transparent); } tr.exterior td:first-child { box-shadow:inset 3px 0 var(--acento); }
 .retirado { opacity:.45; text-decoration:line-through; }
 .navegacion { position:sticky; top:0; z-index:5; background:var(--fondo); border-bottom:1px solid var(--linea); padding:6px 0; margin:-16px 0 8px; }
 .navegacion .fila { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:3px 0; }

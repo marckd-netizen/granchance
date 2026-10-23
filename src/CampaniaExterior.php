@@ -13,16 +13,18 @@ use PDO;
  * Uruguay y de 2015 en Brasil). El nombre solo no alcanza: HANNAH MONTANA 2012 de Uruguay es hija de Smarty Jones, la
  * de Argentina de Glick.
  *
- * Se busca al armar el programa, por el nombre (indexado en todas las bases), así sirve también para el que debuta en
- * el país viniendo de afuera. Con las bases de octubre de 2026 hay unos 470 caballos en dos países (Uruguay y Brasil
- * 220, Uruguay y Argentina 82, Argentina y Brasil 51, Hong Kong y Japón 121). Es solo para leer: el índice y la
- * probabilidad siguen con la campaña del país, porque cada país tiene su propia escala de velocidades.
+ * En el programa, las carreras de afuera se entrelazan por fecha con las del país en la tabla de antecedentes (las
+ * últimas 6, sin ajuste ni índices); en la ficha del caballo, la campaña de cada país va aparte. Se busca por el nombre
+ * (indexado en todas las bases), así sirve también para el que debuta en el país viniendo de afuera. Con las bases
+ * de octubre de 2026 hay unos 470 caballos en dos países (Uruguay y Brasil 220, Uruguay y Argentina 82, Argentina y
+ * Brasil 51, Hong Kong y Japón 121). Es solo para leer: el índice y la probabilidad siguen con la campaña del país,
+ * porque cada país tiene su propia escala de velocidades.
  */
 final class CampaniaExterior
 {
     public const PAISES = ['uy' => 'Uruguay', 'ar' => 'Argentina', 'br' => 'Brasil', 'hk' => 'Hong Kong', 'jp' => 'Japón'];
-    /** Últimas carreras de cada país que se muestran. */
-    public const CARRERAS = 6;
+    /** Cómo se marca el país en la columna del hipódromo del programa. */
+    private const CODIGOS = ['uy' => 'URU', 'ar' => 'ARG', 'br' => 'BRA', 'hk' => 'HK', 'jp' => 'JPN'];
     /** Sufijos de país que van al final del nombre con guion ("SNAP DECISION-ARG"); entre paréntesis se saca cualquiera. */
     private const SUFIJOS = 'ARG|URU|BRZ|BRA|USA|CHI|PER|GB|IRE|FR|FRA|GER|AUS|NZ|JPN|SAF|CAN|ITY|ITA|SPA|ECU|VEN|PAN|COL|MEX';
 
@@ -156,12 +158,12 @@ final class CampaniaExterior
             'jp' => 'COALESCE(c.grado, c.clase)',
             default => 'NULL',
         };
+        $sigla = $pais === 'hk' ? 'h.codigo' : 'NULL';
         $st = $db->prepare(
-            "SELECT r.fecha, h.nombre AS hipodromo, c.numero, c.premio, $cat AS categoria, c.distancia, c.superficie, c.pista,
-                    c.tiempo_ganador, a.puesto, a.puesto_texto, $cpos AS cuerpos, $kg AS kilos, $div AS dividendo, j.nombre AS jockey,
-                    (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = a.carrera_id) AS corredores,
-                    (SELECT g.nombre FROM actuacion x JOIN caballo g ON g.id = x.caballo_id
-                     WHERE x.carrera_id = a.carrera_id AND x.puesto = 1 ORDER BY g.nombre LIMIT 1) AS ganador
+            "SELECT a.carrera_id, r.fecha, r.hipodromo_id, h.nombre AS hipodromo, $sigla AS sigla, c.numero, c.premio, $cat AS categoria,
+                    c.distancia, c.superficie, c.pista, c.tiempo_ganador, a.puesto, a.puesto_texto, $cpos AS cuerpos, $kg AS kilos,
+                    $div AS dividendo, a.gatera, a.tiempo, a.tiempo_seg, a.peso_caballo, j.nombre AS jockey,
+                    (SELECT COUNT(*) FROM actuacion x WHERE x.carrera_id = a.carrera_id) AS corredores
              FROM actuacion a
              JOIN carrera c ON c.id = a.carrera_id
              JOIN reunion r ON r.id = c.reunion_id
@@ -171,12 +173,47 @@ final class CampaniaExterior
              ORDER BY r.fecha DESC, c.numero DESC"
         );
         $st->execute([$caballo, $fecha]);
+        $filas = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (!$filas) {
+            return [];
+        }
+        // El ganador y el segundo de cada carrera, con los kilos que cargaron.
+        $podio = [];
+        $ids = array_column($filas, 'carrera_id');
+        $st = $db->prepare(sprintf("SELECT a.carrera_id, a.puesto, ca.nombre, $kg AS peso FROM actuacion a JOIN caballo ca ON ca.id = a.caballo_id
+            WHERE a.carrera_id IN (%s) AND a.puesto IN (1, 2) ORDER BY ca.nombre", implode(',', array_fill(0, count($ids), '?'))));
+        $st->execute($ids);
+        foreach ($st as $p) {
+            $podio[(int)$p['carrera_id']][(int)$p['puesto']] ??= ['nombre' => $p['nombre'], 'peso' => $p['peso']];
+        }
         $res = [];
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $f) {
+        foreach ($filas as $f) {
             $f['superficie'] = self::superficie($f['superficie']);
+            $f['sigla'] = $f['sigla'] ?? self::sigla($pais, (int)$f['hipodromo_id'], $f['hipodromo']);
+            $f['primero'] = $podio[(int)$f['carrera_id']][1]['nombre'] ?? null;
+            $f['primero_peso'] = $podio[(int)$f['carrera_id']][1]['peso'] ?? null;
+            $f['segundo'] = $podio[(int)$f['carrera_id']][2]['nombre'] ?? null;
+            $f['segundo_peso'] = $podio[(int)$f['carrera_id']][2]['peso'] ?? null;
+            $f['velocidad'] = $f['tiempo_seg'] !== null && $f['distancia'] ? Velocidades::kmh((int)$f['distancia'], (float)$f['tiempo_seg']) : null;
+            // La categoría, si el nombre del premio no la trae ya ("Gran Premio Jockey Club (G1)").
+            $cat = $f['categoria'] && mb_stripos((string)$f['premio'], $f['categoria']) === false ? $f['categoria'] . ' · ' : '';
+            $f['carrera'] = trim($cat . (string)$f['premio'], ' ·');
             $res[] = $f;
         }
         return $res;
+    }
+
+    /** La sigla del hipódromo como la usa el programa de su país (SIS, GAV, TOK...); si no tiene, el nombre. */
+    private static function sigla(string $pais, int $id, string $nombre): string
+    {
+        $s = match ($pais) {
+            'uy' => ProgramaNoOficial::siglaHipodromo($id),
+            'ar' => AR\ProgramaNoOficial::SIGLAS[$id] ?? null,
+            'br' => BR\ProgramaNoOficial::SIGLAS[$id] ?? null,
+            'jp' => JP\ProgramaNoOficial::SIGLAS[$id] ?? null,
+            default => null,
+        };
+        return $s ?? $nombre;
     }
 
     private static function superficie(?string $s): ?string
@@ -198,31 +235,84 @@ final class CampaniaExterior
     }
 
     /**
-     * La campaña de afuera debajo de los antecedentes: una tabla por país, con las últimas carreras y el enlace a la
-     * ficha del caballo en ese país.
+     * Las últimas $n carreras del caballo, las del país y las de afuera entrelazadas por fecha, para la tabla de
+     * antecedentes del programa. Las de afuera llevan 'exterior' (el país) y se dibujan con fila().
      */
-    public static function html(array $exterior, \Closure $e): string
+    public static function mezclar(array $antecedentes, array $exterior, int $n): array
+    {
+        $todas = $antecedentes;
+        foreach ($exterior as $x) {
+            foreach (array_slice($x['carreras'], 0, $n) as $c) {
+                $todas[] = $c + ['exterior' => $x['pais'], 'nombre_pais' => $x['nombre_pais']];
+            }
+        }
+        if (count($todas) > count($antecedentes)) {
+            usort($todas, fn ($a, $b) => $b['fecha'] <=> $a['fecha']);
+        }
+        return array_slice($todas, 0, $n);
+    }
+
+    /**
+     * Una carrera de afuera en la tabla de antecedentes del programa de otro país, con las mismas columnas ($columnas:
+     * los encabezados de esa tabla). Sin ajuste ni índices: cada país tiene su escala de velocidades.
+     */
+    public static function fila(array $c, array $columnas, \Closure $e): string
+    {
+        $num = fn ($v, int $dec) => $v !== null && (float)$v > 0 ? number_format((float)$v, $dec, ',', '.') : '';
+        $o = '<tr class="exterior" title="' . $e('Corrió en ' . $c['nombre_pais'] . ' (' . $c['hipodromo'] . '). Sin índice: cada país tiene su escala de velocidades.') . '">';
+        foreach ($columnas as $col) {
+            $o .= '<td' . (in_array($col, ['Categoría', 'Nivel', 'Clase'], true) ? ' class="cat"' : '') . '>' . match ($col) {
+                'Fecha' => date('d/m/y', strtotime($c['fecha'])),
+                'Hip.' => $e($c['sigla']) . ' <small>' . self::CODIGOS[$c['exterior']] . '</small>',
+                'P.' => $e($c['puesto'] ?? $c['puesto_texto']) . '/' . $c['corredores'],
+                'Ganador' => $e($c['primero']) . ProgramaNoOficial::kilosPodio($c['primero_peso']),
+                'Segundo' => $e($c['segundo']) . ProgramaNoOficial::kilosPodio($c['segundo_peso']),
+                'Cpos.' => $e($c['cuerpos']),
+                'Dist.' => $e($c['distancia']),
+                'Sup.' => $e(mb_substr((string)$c['superficie'], 0, 1)),
+                'Pista', 'Going' => $e($c['pista']),
+                'T. ganador' => $e($c['tiempo_ganador']),
+                'T. final' => $e($c['tiempo']),
+                'Vel.' => $num($c['velocidad'], 2),
+                'Categoría', 'Nivel', 'Clase' => $e($c['carrera']),
+                'Jockey' => $e($c['jockey']),
+                'Kg' => $num($c['kilos'], 1),
+                'Gat.', 'Nº' => $e($c['gatera']),
+                'Div.', 'Sport', 'Cuota' => $num($c['dividendo'], 2),
+                'Peso cab.' => $e($c['peso_caballo'] ?: ''),
+                default => '',
+            } . '</td>';
+        }
+        return $o . '</tr>';
+    }
+
+    /**
+     * La campaña en cada uno de los otros países, para la ficha del caballo: el resumen y todas las carreras, con el
+     * enlace a su ficha en ese país.
+     */
+    public static function htmlFicha(array $exterior, \Closure $e): string
     {
         $o = '';
         foreach ($exterior as $x) {
-            $ganadas = count(array_filter($x['carreras'], fn ($c) => (int)$c['puesto'] === 1));
-            $placé = count(array_filter($x['carreras'], fn ($c) => $c['puesto'] !== null && (int)$c['puesto'] >= 1 && (int)$c['puesto'] <= 3));
-            $o .= '<p class="exterior">Campaña en ' . $e($x['nombre_pais']) . ' (' . Fichas::enlazar('caballo', $x['caballo_id'], $x['nombre'], $x['pais'] === 'uy' ? null : $x['pais'])
-                . '): ' . $x['total'] . ' carrera' . ($x['total'] === 1 ? '' : 's') . ', ' . $ganadas . ' ganada' . ($ganadas === 1 ? '' : 's') . ', ' . $placé . ' entre los 3 primeros'
-                . ($x['total'] > self::CARRERAS ? '; las últimas ' . self::CARRERAS : '') . '.</p>';
-            $o .= '<table class="ant exterior"><thead><tr><th>Fecha</th><th>Hipódromo</th><th>P.</th><th>Ganador</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
-                . '<th>Pista</th><th>T. ganador</th><th>Carrera</th><th>Jockey</th><th>Kg</th><th>Div.</th></tr></thead><tbody>';
-            foreach (array_slice($x['carreras'], 0, self::CARRERAS) as $c) {
-                // La categoría, si el nombre del premio no la trae ya ("Gran Premio Jockey Club (G1)").
-                $cat = $c['categoria'] && mb_stripos((string)$c['premio'], $c['categoria']) === false ? $c['categoria'] . ' · ' : '';
-                $carrera = trim($cat . (string)$c['premio'], ' ·');
-                $o .= '<tr><td>' . date('d/m/y', strtotime($c['fecha'])) . '</td><td>' . $e($c['hipodromo']) . '</td><td>' . $e($c['puesto'] ?? $c['puesto_texto']) . '/' . $c['corredores']
-                    . '</td><td>' . $e($c['ganador']) . '</td><td>' . $e($c['cuerpos']) . '</td><td>' . $e($c['distancia']) . '</td><td>' . $e(mb_substr((string)$c['superficie'], 0, 1))
-                    . '</td><td>' . $e($c['pista']) . '</td><td>' . $e($c['tiempo_ganador']) . '</td><td class="cat">' . $e($carrera) . '</td><td>' . $e($c['jockey'])
-                    . '</td><td>' . ($c['kilos'] !== null ? number_format((float)$c['kilos'], fmod((float)$c['kilos'], 1) == 0 ? 0 : 1, ',', '.') : '')
-                    . '</td><td>' . ($c['dividendo'] !== null && (float)$c['dividendo'] > 0 ? number_format((float)$c['dividendo'], 2, ',', '.') : '') . '</td></tr>';
+            $n = $x['total'];
+            $g = count(array_filter($x['carreras'], fn ($c) => (int)$c['puesto'] === 1));
+            $pl = count(array_filter($x['carreras'], fn ($c) => $c['puesto'] !== null && (int)$c['puesto'] >= 1 && (int)$c['puesto'] <= 3));
+            $pct = fn (int $k) => number_format(100 * $k / $n, 0) . ' %';
+            $o .= '<h2 id="campania-' . $x['pais'] . '">Campaña en ' . $e($x['nombre_pais']) . '</h2>'
+                . '<p class="resumen"><b>' . $n . '</b> carreras · <b>' . $g . '</b> ganadas (' . $pct($g) . ') · <b>' . $pl . '</b> en el marcador (' . $pct($pl) . ')'
+                . ' · Desde ' . date('d/m/Y', strtotime(end($x['carreras'])['fecha'])) . ' · Ficha en ' . $e($x['nombre_pais']) . ': '
+                . Fichas::enlazar('caballo', $x['caballo_id'], $x['nombre'], $x['pais'] === 'uy' ? null : $x['pais']) . '</p>';
+            $o .= '<div class="ancha"><table class="corridas"><thead><tr><th>Fecha</th><th>Hip.</th><th>Carrera</th><th>Dist.</th><th>Pista</th><th>Puesto</th>'
+                . '<th>Ganador</th><th>Jockey</th><th>Kg</th><th>Div.</th></tr></thead><tbody>';
+            foreach ($x['carreras'] as $c) {
+                $p = $c['puesto'] !== null ? (int)$c['puesto'] : null;
+                $o .= '<tr class="' . ($p !== null && $p >= 1 && $p <= 3 ? 'p' . $p : '') . '"><td>' . date('d/m/y', strtotime($c['fecha'])) . '</td><td>' . $e($c['hipodromo'])
+                    . '</td><td class="nom">' . $c['numero'] . 'ª ' . $e($c['carrera']) . '</td><td>' . $e($c['distancia']) . ($c['superficie'] === 'césped' ? ' c' : '')
+                    . '</td><td>' . $e($c['pista']) . '</td><td><b>' . ($p ? $p . 'º' : $e($c['puesto_texto'])) . '</b><small>/' . (int)$c['corredores'] . '</small></td><td>'
+                    . $e($c['primero']) . '</td><td>' . $e($c['jockey']) . '</td><td>' . ($c['kilos'] !== null ? number_format((float)$c['kilos'], 1, ',', '.') : '')
+                    . '</td><td>' . ($c['dividendo'] > 0 ? number_format((float)$c['dividendo'], 2, ',', '.') : '') . '</td></tr>';
             }
-            $o .= '</tbody></table>';
+            $o .= '</tbody></table></div>';
         }
         return $o;
     }

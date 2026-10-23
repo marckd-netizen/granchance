@@ -35,7 +35,7 @@ final class Fichas
      * @param string $carpeta carpeta pública (para saber qué programas y resultados están publicados)
      * @param ?string $pais null para Uruguay, o una clave de PAISES si $db es la base de ese país
      */
-    public function __construct(private PDO $db, private string $carpeta, private ?string $pais = null)
+    public function __construct(private PDO $db, private string $carpeta, private ?string $pais = null, private ?CampaniaExterior $exterior = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         if ($pais !== null && !isset(self::PAISES[$pais])) {
@@ -201,6 +201,9 @@ final class Fichas
 
         $e = fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES);
         $etiqueta = $linea ? self::LINEAS[$tipo][0] : self::TIPOS[$tipo];
+        // Lo que corrió en los otros países (el mismo nombre, padre y madre, ver CampaniaExterior).
+        $exterior = $tipo === 'caballo' && $this->exterior
+            ? $this->exterior->buscar($ficha['nombre'], $ficha['anio_nac'] ? (int)$ficha['anio_nac'] : null, $ficha['padre'], $ficha['madre'], '9999-12-31') : [];
         $o = '<h1>' . $e($titulo) . ' <small>' . $etiqueta . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : '') . '</small></h1>';
         if ($tipo === 'caballo') {
             $sexo = $this->pais === 'jp' ? JP\Traduccion::sexo($ficha['sexo'])
@@ -218,6 +221,9 @@ final class Fichas
                 $st = $this->db->prepare('SELECT nombre FROM persona WHERE id = ?');
                 $st->execute([$ficha['criador_id']]);
                 $o .= ' · Criador: ' . $this->enlace('criador', $ficha['criador_id'], (string)$st->fetchColumn());
+            }
+            if ($exterior) {
+                $o .= ' · Corrió también en ' . implode(', ', array_map(fn ($x) => '<a href="#campania-' . $x['pais'] . '">' . $e($x['nombre_pais']) . '</a> (' . $x['total'] . ')', $exterior));
             }
             $o .= '</p>';
         } elseif ($linea) {
@@ -271,8 +277,9 @@ final class Fichas
                 . ($linea ? 'Son las carreras y los premios de sus ' . ($tipo === 'abuelo' ? 'nietos por línea materna' : 'hijos')
                     . '. Van por el nombre, como figura en la base: si dos ' . ($tipo === 'madre' ? 'yeguas' : 'padrillos') . ' se llaman igual, sus hijos salen juntos.' : '') . '</p>';
         } else {
-            $o .= '<p>No tiene carreras corridas registradas.</p>';
+            $o .= '<p>No tiene carreras corridas registradas' . ($exterior ? ' en ' . ($this->pais ? self::PAISES[$this->pais][0] : 'Uruguay') : '') . '.</p>';
         }
+        $o .= CampaniaExterior::htmlFicha($exterior, $e);
         return $this->documento($titulo . ' · ' . $etiqueta . ($this->pais ? ' · ' . self::PAISES[$this->pais][0] : ''), $o);
     }
 

@@ -30,7 +30,9 @@ try {
         }
     };
     $bases = array_filter(['ar' => $otra('ar'), 'br' => $otra('br'), 'hk' => $otra('hk'), 'jp' => $otra('jp')]);
-    $fichas = new GranChance\Fichas($db, __DIR__);
+    // La ficha del caballo suma lo que corrió en los otros países (abre esas bases solo si hace falta).
+    $exterior = $tipo === 'caballo' ? GranChance\CampaniaExterior::desdeConfig($config, $pais ?? 'uy') : null;
+    $fichas = new GranChance\Fichas($db, __DIR__, null, $exterior);
     $otrasFichas = function (array $bases): array {
         $f = [];
         foreach ($bases as $p => $b) {
@@ -44,7 +46,7 @@ try {
         $tipo === 'buscar' => $fichas->buscar((string)($_GET['q'] ?? ''), $otrasFichas($bases)),
         $tipo === 'ranking' && empty($_GET['de']) => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null, $bases['jp'] ?? null))->indice(),
         $tipo === 'ranking' => (new GranChance\Rankings($db, __DIR__, $bases['hk'] ?? null, $bases['br'] ?? null, $bases['ar'] ?? null, $bases['jp'] ?? null))->pagina((string)$_GET['de'], $_GET),
-        $pais !== null => isset($bases[$pais]) ? (new GranChance\Fichas($bases[$pais], __DIR__, $pais))->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null) : null,
+        $pais !== null => isset($bases[$pais]) ? (new GranChance\Fichas($bases[$pais], __DIR__, $pais, $exterior))->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null) : null,
         default => $fichas->pagina($tipo, $id, isset($_GET['todas']), isset($_GET['h']) ? (string)$_GET['h'] : null),
     };
 } catch (Throwable $e) {

@@ -394,12 +394,21 @@ final class ProgramaNoOficial
             . ($h['equipo'] ? ' · Equipo: ' . $e($h['equipo']) : '') . ' · ' . $e($ped['padre'] . ' y ' . $ped['madre'] . ($ped['abuelo_materno'] ? ' por ' . $ped['abuelo_materno'] : ''))
             . ($h['importacion'] ? ' · ' . $e($h['importacion']) : '') . ' · Propietario: ' . $e($h['propietario']) . '</p>';
         if (!$h['antecedentes']) {
-            return $o . '<p class="debut">Sin carreras en Hong Kong</p>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
+            $o .= '<p class="debut">Sin carreras en Hong Kong</p>';
+            if (!$h['exterior']) {
+                return $o . '</div>';
+            }
         }
-        $o .= '<table class="ant"><thead><tr><th>Fecha</th><th>Hip.</th><th>P.</th><th>Ganador</th><th>Segundo</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
-            . '<th>Going</th><th>Riel</th><th>T. ganador</th><th>T. final</th><th>Vel.</th><th>Ajuste</th><th>Vel. corr.</th><th>Índ. clase</th><th>Índice</th>'
-            . '<th>Clase</th><th>Jockey</th><th>Kg</th><th>Gat.</th><th>Pos.</th><th>Cuota</th><th>Peso cab.</th></tr></thead><tbody>';
-        foreach (array_slice($h['antecedentes'], 0, self::ANTECEDENTES) as $a) {
+        $cols = ['Fecha', 'Hip.', 'P.', 'Ganador', 'Segundo', 'Cpos.', 'Dist.', 'Sup.', 'Going', 'Riel', 'T. ganador', 'T.
+            final', 'Vel.', 'Ajuste', 'Vel. corr.', 'Índ. clase', 'Índice', 'Clase', 'Jockey', 'Kg', 'Gat.', 'Pos.',
+            'Cuota', 'Peso cab.'];
+        $o .= '<table class="ant"><thead><tr><th>' . implode('</th><th>', $cols) . '</th></tr></thead><tbody>';
+        // Las últimas, con las de otros países entrelazadas por fecha.
+        foreach (CampaniaExterior::mezclar($h['antecedentes'], $h['exterior'], self::ANTECEDENTES) as $a) {
+            if (isset($a['exterior'])) {
+                $o .= CampaniaExterior::fila($a, $cols, $e);
+                continue;
+            }
             $fecha = date('d/m/y', strtotime($a['fecha']));
             if ($otros = array_diff($juntos[(int)$a['carrera_id']] ?? [], [$h['numero']])) {
                 $fecha = '<b>' . $fecha . '</b> <small>con ' . $e(implode(', ', $otros)) . '</small>';
@@ -413,7 +422,7 @@ final class ProgramaNoOficial
                 . '</td><td>' . self::num($a['peso_asignado'] !== null ? (float)$a['peso_asignado'] : null, 1) . '</td><td>' . $e($a['gatera'])
                 . '</td><td>' . $e($a['posiciones']) . '</td><td>' . $e($a['cuota']) . '</td><td>' . $e($a['peso_caballo_lb']) . '</td></tr>';
         }
-        return $o . '</tbody></table>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
+        return $o . '</tbody></table></div>';
     }
 
     /** carrera pasada => números de los caballos de hoy (que corren) que la corrieron. */
