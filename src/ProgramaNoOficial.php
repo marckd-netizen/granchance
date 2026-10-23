@@ -240,7 +240,7 @@ final class ProgramaNoOficial
         if (!$record) {
             return null;
         }
-        // Primero, lo aprendido de los programas viejos (bin/records.php): cubre los récords anteriores a 2015.
+        // Primero, lo aprendido de los programas viejos (bin/records.php): cubre los récords que no están en la base.
         $st = $this->db->prepare('SELECT distancia FROM record_distancia WHERE hipodromo_id = ? AND record = ? ORDER BY carreras DESC LIMIT 1');
         $st->execute([$hip, mb_substr($record, 0, 150)]);
         $d = $st->fetchColumn();

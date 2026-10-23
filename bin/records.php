@@ -1,16 +1,36 @@
 <?php
 // Arma la tabla record_distancia: lee los programas guardados en raw/programas y, para cada carrera que ya tiene
 // resultado en la base, anota "récord que figura en el programa → distancia que se corrió". bin/programa.php la usa
-// para saber la distancia de las carreras cuyo récord es anterior a 2015 (los demás se encuentran en la base).
-// Uso: php bin/records.php [--desde=AAAA-MM-DD]
+// para saber la distancia de las carreras cuyo récord no está en la base: los anteriores a 2015 y los de setiembre a
+// diciembre de 2015, que el servicio no tiene (responde ED0003 para todos los hipódromos).
+// Uso: php bin/records.php [--desde=AAAA-MM-DD] [--bajar[=AAAA-MM-DD]] [--hipodromos=1,13]
+//   --bajar  antes, baja el Programa de cada reunión ya cargada desde esa fecha (por defecto, el último año) que no
+//            esté en raw/programas. Los récords vigentes figuran en todos los programas, así que con un año alcanza.
 require __DIR__ . '/_inicio.php';
 
-use GranChance\{Clasificador, ParserPrograma};
+use GranChance\{Clasificador, Cliente, ParserPrograma};
 
 $opc = opciones($argv);
 $db = new PDO($config['db']['dsn'], $config['db']['usuario'], $config['db']['clave'], [PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4']);
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $db->exec(file_get_contents(__DIR__ . '/../sql/velocidades.sql'));
+if (isset($opc['bajar'])) {
+    $cli = new Cliente(
+        str_replace('docType=ResultadoCarreraWeb', 'docType=Programa', $config['url_resultados']),
+        $config['carpeta_crudos'] . '/programas',
+        (float)$config['pausa_segundos'],
+    );
+    $hips = hipodromos($opc, $config);
+    $st = $db->prepare(sprintf('SELECT hipodromo_id, fecha FROM reunion WHERE hipodromo_id IN (%s) AND fecha >= ? ORDER BY fecha',
+        implode(',', array_fill(0, count($hips), '?'))));
+    $st->execute([...$hips, $opc['bajar'] === true ? date('Y-m-d', strtotime('-1 year')) : $opc['bajar']]);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $d = $cli->bajarResultados((int)$r['hipodromo_id'], $r['fecha']);
+        if ($d['estado'] !== 'ok') {
+            registro("{$r['fecha']} hip {$r['hipodromo_id']}: programa {$d['estado']} {$d['detalle']}");
+        }
+    }
+}
 $parser = new ParserPrograma();
 $buscar = $db->prepare('SELECT c.distancia, c.superficie FROM carrera c JOIN reunion r ON r.id = c.reunion_id
                         WHERE r.hipodromo_id = ? AND r.fecha = ? AND c.nro_oficial = ?');

@@ -24,7 +24,7 @@ cp config.example.php config.php   # completar usuario y clave de la base
 | `php bin/parsear.php archivo.xls` | Muestra en JSON lo que se lee de un Excel, sin tocar la base. |
 | `php bin/tiempos.php [--mostrar]` | Corrige en la base los tiempos imposibles que trae el Excel (la diferencia con el ganador en lugar del tiempo, o un dígito mal): el tiempo pasa a ser el del ganador más 0,17 s por cuerpo, como lo calculan las planillas. Lo que igual queda fuera de 20 a 80 km/h (carreras sin tiempo del ganador) queda sin tiempo. Al leer un Excel nuevo se corrige solo. Después, `bin/velocidades.php` y `bin/modelo.php`. |
 | `php bin/velocidades.php [--mostrar=1]` | Recalcula las velocidades normales (par) por categoría y los ajustes por pista y viento. Correrlo después de `diario.php`. |
-| `php bin/records.php` | Arma el mapa récord → distancia con los programas de `raw/programas` (el Programa no trae la distancia). Una vez, y de vez en cuando. |
+| `php bin/records.php [--bajar] [--hipodromos=1,13]` | Arma el mapa récord → distancia con los programas de `raw/programas` (el Programa no trae la distancia, y los récords anteriores a 2015 o de setiembre a diciembre de 2015 no tienen resultado en la base). Con `--bajar`, antes baja los programas del último año de cada hipódromo que falten. Una vez, y de vez en cuando. |
 | `php bin/studs.php` | Baja del Stud Book Uruguayo los studs registrados con sus colores (`stud_colores`); el programa los muestra junto al stud y dibuja la chaquetilla (`src/Chaquetilla.php`). |
 | `php bin/prensa.php --bajar [--desde=2024-01-01] [--hipodromos=1,13]` | Baja del concurso de prensa (servicios.maronas.com.uy) el favorito, enemigo y sorpresa de cada periodista en Maroñas y Las Piedras (`prensa_pronostico`). Sigue donde quedó. El programa baja solo la reunión del día si todavía no está. |
 | `php bin/prensa.php --ajustar` | Entrena el modelo y ajusta, con las carreras que no vio, cuánto pesa la prensa en cada hipódromo (`prensa_coef`). Muestra el acierto con y sin prensa. Después correr `php bin/modelo.php`. |
@@ -46,7 +46,7 @@ La tabla `descarga` registra cada (hipódromo, fecha) consultado y si dio result
 
 ## Programa no oficial y velocidades por categoría
 
-Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `bin/velocidades.php`), `php bin/records.php` y `php bin/velocidades.php`.
+Antes de usarlo: `mysql granchance < sql/velocidades.sql` (o dejar que lo cree `bin/velocidades.php`), `php bin/records.php --bajar` y `php bin/velocidades.php`.
 
 - **Categoría** de cada carrera (`src/Clasificador.php`): nivel sacado del premio y la condición (G1, G2, G3, Listado, Clásico,
   Handicap, Perdedores, Ganadores de 1, 2, 3 o 4+, Preferencial, Condicional, Cuarto de milla), edad del lote (2a, 3a, 3a+, 4a+)
@@ -141,7 +141,7 @@ Tablas nuevas en `sql/publicacion.sql` (las crea `bin/publicar.php`).
    Terminal), y completar `config.php`, con `'carpeta_publica' => '/home/USUARIO/public_html'`. `bin/publicar.php` copia ahí
    `index.php` y `.htaccess`.
 3. Elegir PHP 8.1 o más en *MultiPHP Manager* / *Select PHP Version*, con `pdo_mysql`, `curl`, `zip`, `xml`, `gd` y `mbstring`.
-4. Primera vez: `php bin/records.php`, `php bin/velocidades.php`, `php bin/modelo.php` y `php bin/publicar.php`.
+4. Primera vez: `php bin/records.php --bajar`, `php bin/velocidades.php`, `php bin/modelo.php` y `php bin/publicar.php`.
 5. En *Cron Jobs* (la hora es la del servidor; si no está en hora de Uruguay, correr las horas):
 
 ```
