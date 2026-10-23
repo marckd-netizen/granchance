@@ -6,6 +6,7 @@
 require __DIR__ . '/jp_comun.php';
 ini_set('memory_limit', '-1');
 
+use GranChance\CampaniaExterior;
 use GranChance\JP\{Modelo, ParserPrograma, ParserResultados, ProgramaNoOficial, Velocidades};
 
 $opc = opciones($argv);
@@ -39,7 +40,7 @@ if (!$modelo->cargar()) {
     fwrite(STDERR, "Falta entrenar el modelo: php bin/jp_modelo.php\n");
     exit(1);
 }
-$prog = new ProgramaNoOficial($db, $vel, $modelo);
+$prog = new ProgramaNoOficial($db, $vel, $modelo, CampaniaExterior::desdeConfig($config, 'jp'));
 $p = $prog->armar($carreras, $fecha);
 $salida = (string)($opc['salida'] ?? $jp['carpeta_crudos'] . "/programas/{$fecha}_$hip.html");
 if (!is_dir(dirname($salida))) {

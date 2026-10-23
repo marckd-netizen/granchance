@@ -6,6 +6,7 @@
 require __DIR__ . '/hk_comun.php';
 ini_set('memory_limit', '-1');
 
+use GranChance\CampaniaExterior;
 use GranChance\HK\{Modelo, ParserPrograma, ProgramaNoOficial, Velocidades};
 
 $opc = opciones($argv);
@@ -37,7 +38,7 @@ if (!$modelo->cargar()) {
     fwrite(STDERR, "Falta entrenar el modelo: php bin/hk_modelo.php\n");
     exit(1);
 }
-$prog = new ProgramaNoOficial($db, $vel, $modelo);
+$prog = new ProgramaNoOficial($db, $vel, $modelo, CampaniaExterior::desdeConfig($config, 'hk'));
 $p = $prog->armar($carreras, $fecha);
 $salida = (string)($opc['salida'] ?? $hk['carpeta_crudos'] . "/programas/{$fecha}_$hip.html");
 if (!is_dir(dirname($salida))) {

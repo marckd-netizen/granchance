@@ -49,7 +49,8 @@ final class ProgramaNoOficial
     /** Reuniones cuyos pronósticos de prensa ya se intentó bajar en esta corrida ("hip fecha" => true). */
     private array $prensaBajada = [];
 
-    public function __construct(private PDO $db, private Velocidades $vel, private ?Modelo $modelo = null, private ?Prensa $prensa = null)
+    public function __construct(private PDO $db, private Velocidades $vel, private ?Modelo $modelo = null, private ?Prensa $prensa = null,
+        private ?CampaniaExterior $exterior = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -91,6 +92,11 @@ final class ProgramaNoOficial
                 $h['antecedentes'] = $this->antecedentes($h['nombre'], $h['pais'], $h['anio_nac'], $fecha, $hip);
                 $h['campania'] = $h['antecedentes'] ? $this->campania($h['nombre'], $h['pais'], $h['anio_nac'], $fecha) : null;
                 $h += $this->resumen($h, $c, $fecha, $nivelHoy, $pesoTop);
+                $ped = $this->exterior ? $this->pedigri($h) : null;
+                $h['exterior'] = $this->exterior?->buscar($h['nombre'], $h['anio_nac'], $ped['padre'], $ped['madre'], $fecha) ?? [];
+                if ($h['exterior']) {
+                    $h['notas'][] = 'Corrió en ' . CampaniaExterior::resumen($h['exterior']);
+                }
             }
             unset($h);
             // Carreras pasadas en las que corrieron juntos dos o más caballos de hoy: carrera => números de mandil.
@@ -569,7 +575,7 @@ final class ProgramaNoOficial
                 . '</td><td>' . self::idx($h['proyeccion']) . '</td><td class="fuerte">' . self::idx($h['vs_par_hoy']) . '</td><td class="fuerte">' . ($h['prob'] !== null ? self::num(100 * $h['prob'], 0) . ' %' : '')
                 . (($c['con_prensa'] ?? false) ? '</td><td>' . self::prensa($h['prensa']) . '</td><td>' . ($h['prob_modelo'] !== null ? self::num(100 * $h['prob_modelo'], 0) . ' %' : '') : '')
                 . '</td><td>' . $e($h['dias'])
-                . '</td><td>' . ($h['retirado'] ? 'No correrá' : ($h['suplente'] ? 'Suplente. ' : '') . (!$h['antecedentes'] ? 'Debutante' : $e(implode('. ', $h['notas'])))) . '</td></tr>';
+                . '</td><td>' . ($h['retirado'] ? 'No correrá' : ($h['suplente'] ? 'Suplente. ' : '') . $e(implode('. ', $h['antecedentes'] ? $h['notas'] : array_merge([$h['exterior'] ? 'Debuta en Uruguay' : 'Debutante'], $h['notas'])))) . '</td></tr>';
         }
         $o .= '</tbody></table>';
 
@@ -605,7 +611,7 @@ final class ProgramaNoOficial
             . ' · Cuidador: ' . $e($h['cuidador']) . $cambio($h['cambio_cuidador']) . ' · Stud: ' . $e($h['stud']) . ($col ? ' <small class="colores">(' . $e($col) . ')</small>' : '') . $cambio($h['cambio_stud'])
             . ' · Gatera: ' . $e($h['gatera']) . ' · ' . $e($h['pedigri']) . '</p>';
         if (!$h['antecedentes']) {
-            return $o . '<p class="debut">Debutante (sin antecedentes en la base)</p></div>';
+            return $o . '<p class="debut">' . ($h['exterior'] ? 'Debuta en Uruguay' : 'Debutante (sin antecedentes en la base)') . '</p>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
         }
         $o .= '<table class="ant"><thead><tr><th>Fecha</th><th>Hip.</th><th>P.</th><th>Ganador</th><th>Segundo</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
             . '<th>Pista</th><th>Viento</th><th>T. ganador</th><th>T. final</th><th>Vel.</th><th>Ajuste</th><th>Vel. corr.</th><th>Índ. cat.</th><th>Índice</th>'
@@ -627,7 +633,7 @@ final class ProgramaNoOficial
                 . '</td><td>' . $e($a['gatera']) . '</td><td>' . self::num($a['sport'] !== null ? (float)$a['sport'] : null) . '</td><td>' . $e($a['peso_caballo'] ?: '')
                 . '</td><td>' . $e($a['tratamiento']) . '</td><td>' . $e($a['marca']) . '</td></tr>';
         }
-        return $o . '</tbody></table></div>';
+        return $o . '</tbody></table>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
     }
 
     /** Kilos que cargó el ganador o el segundo de un antecedente, al lado del nombre: " (57)", " (56,5)". Lo usan todos los países. */
@@ -806,6 +812,7 @@ th, td { border:1px solid var(--linea); padding:2px 5px; white-space:nowrap; }
 .cambio { color:var(--menos); font-weight:600; } .debut { color:var(--suave); font-style:italic; }
 .mas { color:var(--mas); font-weight:600; } .menos { color:var(--menos); } .fuerte { font-size:14px; }
 .cat { font-size:11px; color:var(--suave); }
+p.exterior { margin:6px 0 0; color:var(--acento); font-weight:600; } table.exterior { border-left:3px solid var(--acento); }
 .retirado { opacity:.45; text-decoration:line-through; }
 .navegacion { position:sticky; top:0; z-index:5; background:var(--fondo); border-bottom:1px solid var(--linea); padding:6px 0; margin:-16px 0 8px; }
 .navegacion .fila { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:3px 0; }

@@ -7,6 +7,7 @@
 require __DIR__ . '/br_comun.php';
 ini_set('memory_limit', '-1');
 
+use GranChance\CampaniaExterior;
 use GranChance\BR\{Modelo, ParserResultados, ProgramaNoOficial, Velocidades};
 
 $opc = opciones($argv);
@@ -44,7 +45,7 @@ if (!$modelo->cargar()) {
     fwrite(STDERR, "Falta entrenar el modelo: php bin/br_modelo.php\n");
     exit(1);
 }
-$gen = new ProgramaNoOficial($db, $vel, $modelo);
+$gen = new ProgramaNoOficial($db, $vel, $modelo, CampaniaExterior::desdeConfig($config, 'br'));
 $hip = (int)$hip;
 $p = $gen->armar($prog, $hip);
 $salida = (string)($opc['salida'] ?? $br['carpeta_crudos'] . "/programas/{$fecha}_" . ProgramaNoOficial::SIGLAS[$hip] . '.html');

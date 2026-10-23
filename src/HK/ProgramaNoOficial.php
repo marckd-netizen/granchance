@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace GranChance\HK;
 
 use GranChance\{Clasificador, Modelo as ModeloUy, ProgramaNoOficial as ProgramaUy};
-use GranChance\Fichas;
+use GranChance\{CampaniaExterior, Fichas};
 use PDO;
 
 /**
@@ -29,7 +29,7 @@ final class ProgramaNoOficial
         'SB' => 'frontalera de piel', 'SR' => 'muserola de piel', 'TT' => 'lengua atada', 'V' => 'visera', 'VO' => 'visera de un lado',
         'XB' => 'muserola cruzada', 'BL' => 'cepillo a la izquierda', 'BR' => 'cepillo a la derecha', 'BK' => 'manta en la gatera', 'CC' => 'collar Cornell'];
 
-    public function __construct(private PDO $db, private Velocidades $vel, private Modelo $modelo)
+    public function __construct(private PDO $db, private Velocidades $vel, private Modelo $modelo, private ?CampaniaExterior $exterior = null)
     {
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -63,6 +63,10 @@ final class ProgramaNoOficial
                 $h['antecedentes'] = $h['caballo_id'] ? $this->antecedentes($h['caballo_id'], $fecha, $hip) : [];
                 $h['pedigri'] = $this->pedigri($h);
                 $h += $this->resumen($h, $c, $eqHoy, $nivelHoy, $pesoTop);
+                $h['exterior'] = $this->exterior?->buscar($h['nombre'], null, $h['pedigri']['padre'] ?? null, $h['pedigri']['madre'] ?? null, $fecha) ?? [];
+                if ($h['exterior']) {
+                    $h['notas'][] = 'Corrió en ' . CampaniaExterior::resumen($h['exterior']);
+                }
             }
             unset($h);
             $this->frente($c, $fecha);
@@ -390,7 +394,7 @@ final class ProgramaNoOficial
             . ($h['equipo'] ? ' · Equipo: ' . $e($h['equipo']) : '') . ' · ' . $e($ped['padre'] . ' y ' . $ped['madre'] . ($ped['abuelo_materno'] ? ' por ' . $ped['abuelo_materno'] : ''))
             . ($h['importacion'] ? ' · ' . $e($h['importacion']) : '') . ' · Propietario: ' . $e($h['propietario']) . '</p>';
         if (!$h['antecedentes']) {
-            return $o . '<p class="debut">Sin carreras en Hong Kong</p></div>';
+            return $o . '<p class="debut">Sin carreras en Hong Kong</p>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
         }
         $o .= '<table class="ant"><thead><tr><th>Fecha</th><th>Hip.</th><th>P.</th><th>Ganador</th><th>Segundo</th><th>Cpos.</th><th>Dist.</th><th>Sup.</th>'
             . '<th>Going</th><th>Riel</th><th>T. ganador</th><th>T. final</th><th>Vel.</th><th>Ajuste</th><th>Vel. corr.</th><th>Índ. clase</th><th>Índice</th>'
@@ -409,7 +413,7 @@ final class ProgramaNoOficial
                 . '</td><td>' . self::num($a['peso_asignado'] !== null ? (float)$a['peso_asignado'] : null, 1) . '</td><td>' . $e($a['gatera'])
                 . '</td><td>' . $e($a['posiciones']) . '</td><td>' . $e($a['cuota']) . '</td><td>' . $e($a['peso_caballo_lb']) . '</td></tr>';
         }
-        return $o . '</tbody></table></div>';
+        return $o . '</tbody></table>' . CampaniaExterior::html($h['exterior'], $e) . '</div>';
     }
 
     /** carrera pasada => números de los caballos de hoy (que corren) que la corrieron. */
