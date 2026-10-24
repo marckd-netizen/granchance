@@ -456,6 +456,22 @@ final class Publicador
         return $o;
     }
 
+    /**
+     * Hora (en UTC) de la primera y de la última carrera de la reunión, del calendario que se publicó con el programa,
+     * para que la portada ordene las próximas reuniones por cuándo empiezan de verdad y saque las que ya terminaron.
+     * Sin calendario (o con el programa preliminar, sin horario): [null, null].
+     * @return array{0:?string, 1:?string}
+     */
+    private static function horasReunion(string $ics): array
+    {
+        if (!is_file($ics) || !preg_match_all('/^DTSTART:(\d{8}T\d{6})Z\r?$/m', (string)file_get_contents($ics), $m)) {
+            return [null, null];
+        }
+        sort($m[1]);
+        $iso = fn (string $t) => \DateTimeImmutable::createFromFormat('Ymd\THis', $t, new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+        return [$iso($m[1][0]), $iso(end($m[1]))];
+    }
+
     /** calendario.ics: las carreras de las reuniones publicadas desde hace una semana en adelante. */
     private static function calendarioGeneral(string $carpeta): void
     {
@@ -762,6 +778,7 @@ final class Publicador
             }
         }
         foreach ($reuniones as $k => &$r) {
+            [$r['inicio'], $r['ultima']] = self::horasReunion("$carpeta/calendario/$k.ics");
             if (isset($resumen[$k])) {
                 $r['carreras'] = $resumen[$k]['carreras'];
                 $r['acierto'] = ['ganador' => $resumen[$k]['ganador'], 'trifecta' => $resumen[$k]['trifecta'], 'origen' => $resumen[$k]['origen']];
