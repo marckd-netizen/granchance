@@ -54,8 +54,14 @@ if ($filtro !== null) {
     $reuniones = array_values(array_filter($reuniones, fn ($r) => $r['pais'] === $pais));
 }
 $titulo = $filtro !== null ? $hips[$filtro] : $pais;
-$proximas = array_reverse(array_values(array_filter($reuniones, fn ($r) => $r['fecha'] >= $hoy)));
-$pasadas = array_values(array_filter($reuniones, fn ($r) => $r['fecha'] < $hoy));
+// Una reunión pasa a las anteriores una hora después de la última carrera (con su hora real: Japón y Hong Kong corren
+// de madrugada en Uruguay, la reunión del sábado allá termina el viernes de noche acá). Sin horario, al otro día.
+$ahora = time();
+$terminada = fn ($r) => !empty($r['ultima']) ? strtotime($r['ultima']) + 3600 <= $ahora : $r['fecha'] < $hoy;
+$empieza = fn ($r) => !empty($r['inicio']) ? strtotime($r['inicio']) : strtotime($r['fecha'] . ' 12:00');
+$proximas = array_values(array_filter($reuniones, fn ($r) => !$terminada($r)));
+usort($proximas, fn ($a, $b) => [$empieza($a), $a['nombre']] <=> [$empieza($b), $b['nombre']]);
+$pasadas = array_values(array_filter($reuniones, $terminada));
 
 $variosPaises = count($paises) > 1 && $pais === null;
 // Banderas en SVG (los emoji de bandera no se ven en Windows), de 3:2. Un país sin bandera queda con el nombre.
@@ -72,10 +78,21 @@ $banderas = [
 $bandera = fn (string $p) => isset($banderas[$p])
     ? '<svg class="bandera" viewBox="0 0 27 18" role="img" aria-label="' . $e($p) . '"><title>' . $e($p) . '</title>' . $banderas[$p] . '</svg>'
     : '<small>' . $e($p) . '</small>';
-$fila = function (array $r) use ($e, $dias, $variosPaises, $bandera): string {
+// Hora de la 1ª carrera, en hora de Uruguay; el script de abajo la pasa a la zona horaria del que mira. Si ese día no
+// es el de la reunión (Japón, visto desde acá), va también el día.
+$primera = function (array $r) use ($e, $dias, $ahora): string {
+    if (empty($r['inicio'])) {
+        return '<td></td>';
+    }
+    $t = strtotime($r['inicio']);
+    $dia = date('Y-m-d', $t) !== $r['fecha'] ? mb_strtolower(mb_substr($dias[(int)date('w', $t)], 0, 3)) . ' ' . date('d/m', $t) . ' ' : '';
+    return '<td>1ª <time class="primera" datetime="' . $e($r['inicio']) . '" data-fecha="' . $e($r['fecha']) . '">' . $dia . date('H:i', $t) . '</time>'
+        . ($t <= $ahora ? ' <small>· en curso</small>' : '') . '</td>';
+};
+$fila = function (array $r, bool $hora = false) use ($e, $dias, $variosPaises, $bandera, $primera): string {
     $t = strtotime($r['fecha']);
     $o = '<tr><td>' . $dias[(int)date('w', $t)] . ' ' . date('d/m', $t) . '</td><td>' . $e($r['nombre'])
-        . ($variosPaises ? ' ' . $bandera($r['pais']) : '') . '</td><td>'
+        . ($variosPaises ? ' ' . $bandera($r['pais']) : '') . '</td>' . ($hora ? $primera($r) : '') . '<td>'
         . ($r['programa'] ? '<a href="' . $e($r['programa']) . '">Programa</a>' : '') . '</td><td>';
     if ($r['resultado']) {
         $o .= '<a href="' . $e($r['resultado']) . '">Predicción vs resultado</a>';
@@ -121,6 +138,8 @@ td:first-child { white-space:nowrap; width:9em; } td:nth-child(2) { width:9em; }
 .filtro .pais { font-weight:600; }
 .filtro .hips { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 0 18px; padding-left:10px; border-left:2px solid var(--linea); }
 .proximas td { background:var(--cabecera); }
+.proximas td:nth-child(3) { white-space:nowrap; width:10em; }
+p.zona { margin:0 0 6px; }
 .bandera { width:21px; height:14px; vertical-align:-2px; margin-left:2px; border-radius:2px; box-shadow:0 0 0 1px var(--linea); }
 .historial { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
 .calendario { width:252px; flex:none; border:1px solid var(--linea); border-radius:8px; padding:8px; }
@@ -156,7 +175,25 @@ td:first-child { white-space:nowrap; width:9em; } td:nth-child(2) { width:9em; }
 <?php endif ?>
 <?php if ($proximas): ?>
 <h2>Próximas reuniones</h2>
-<table class="proximas"><?php foreach ($proximas as $r) { echo $fila($r); } ?></table>
+<p class="zona"><small>Hora de la primera carrera, en hora de Uruguay.</small></p>
+<table class="proximas"><?php foreach ($proximas as $r) { echo $fila($r, true); } ?></table>
+<script>
+(() => {
+    // La hora de la 1ª carrera en la zona horaria del que mira (con el día si no es el de la reunión).
+    const hora = new Intl.DateTimeFormat('es', {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+    const fecha = new Intl.DateTimeFormat('en-CA', {year: 'numeric', month: '2-digit', day: '2-digit'});
+    const dia = new Intl.DateTimeFormat('es', {weekday: 'short'});
+    document.querySelectorAll('time.primera').forEach((t) => {
+        const d = new Date(t.getAttribute('datetime'));
+        if (isNaN(d)) return;
+        const f = fecha.format(d);
+        t.title = 'Hora de Uruguay: ' + t.textContent;
+        t.textContent = (f !== t.dataset.fecha ? dia.format(d).replace('.', '') + ' ' + f.slice(8, 10) + '/' + f.slice(5, 7) + ' ' : '') + hora.format(d);
+    });
+    const z = document.querySelector('p.zona small');
+    if (z) z.textContent = 'Hora de la primera carrera en tu zona horaria (' + Intl.DateTimeFormat().resolvedOptions().timeZone + ').';
+})();
+</script>
 <?php endif ?>
 <?php if ($pasadas): ?>
 <h2>Reuniones anteriores</h2>
